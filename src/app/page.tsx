@@ -1,69 +1,120 @@
-import Image from "next/image";
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Search, Leaf, ShieldCheck, QrCode } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import Link from 'next/link';
 
 export default function Home() {
+  const [batchId, setBatchId] = useState('');
+  const router = useRouter();
+
+  const handleTrace = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (batchId.trim()) {
+      router.push(`/trace/${batchId.trim()}`);
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* Header */}
+      <header className="bg-green-700 text-white p-4 shadow-md">
+        <div className="container mx-auto flex justify-between items-center">
+          <div className="flex items-center space-x-2">
+            <Leaf className="h-6 w-6" />
+            <span className="text-xl font-bold">SurakshaKhadya</span>
+          </div>
+          <div className="space-x-4">
+            <Link href="/login">
+              <Button variant="ghost" className="text-white hover:text-green-100 hover:bg-green-800">
+                Sign In
+              </Button>
+            </Link>
+            <Link href="/register">
+              <Button variant="secondary" className="bg-white text-green-700 hover:bg-green-50">
+                Register
+              </Button>
+            </Link>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-grow flex flex-col items-center justify-center p-6 text-center">
+        <div className="max-w-3xl w-full space-y-8">
+          <div className="space-y-4">
+            <h1 className="text-4xl md:text-6xl font-extrabold text-slate-900 tracking-tight">
+              Farm-to-Fork <span className="text-green-600">Food Safety</span>
+            </h1>
+            <p className="text-xl text-slate-600 max-w-2xl mx-auto">
+              Blockchain-backed traceability for perishables. Know exactly where your food comes from and verify its safety.
+            </p>
+          </div>
+
+          <Card className="border-2 border-green-100 shadow-xl">
+            <CardHeader>
+              <CardTitle className="text-2xl text-green-800">Trace Your Food</CardTitle>
+              <CardDescription className="text-lg">
+                Enter the Batch ID from your product packaging or scan its QR code
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleTrace} className="flex flex-col sm:flex-row gap-4">
+                <div className="relative flex-grow">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-5 w-5" />
+                  <Input
+                    type="text"
+                    placeholder="e.g. SK-2026-X981"
+                    className="pl-10 text-lg py-6"
+                    value={batchId}
+                    onChange={(e) => setBatchId(e.target.value)}
+                  />
+                </div>
+                <Button type="submit" size="lg" className="py-6 text-lg bg-green-600 hover:bg-green-700">
+                  Trace Batch
+                </Button>
+                <Button type="button" variant="outline" size="lg" className="py-6 text-lg border-green-200 text-green-700 hover:bg-green-50">
+                  <QrCode className="mr-2 h-5 w-5" />
+                  Scan QR
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-12">
+            <div className="flex flex-col items-center space-y-2">
+              <div className="p-4 bg-green-100 rounded-full text-green-600">
+                <Leaf className="h-8 w-8" />
+              </div>
+              <h3 className="text-lg font-semibold">100% Transparent</h3>
+              <p className="text-slate-600 text-sm">See the complete journey from the farm to your local store.</p>
+            </div>
+            <div className="flex flex-col items-center space-y-2">
+              <div className="p-4 bg-blue-100 rounded-full text-blue-600">
+                <ShieldCheck className="h-8 w-8" />
+              </div>
+              <h3 className="text-lg font-semibold">Lab Verified</h3>
+              <p className="text-slate-600 text-sm">Check pesticide residue levels and safety certifications.</p>
+            </div>
+            <div className="flex flex-col items-center space-y-2">
+              <div className="p-4 bg-amber-100 rounded-full text-amber-600">
+                <QrCode className="h-8 w-8" />
+              </div>
+              <h3 className="text-lg font-semibold">Instant Access</h3>
+              <p className="text-slate-600 text-sm">Simply scan the QR code to view the immutable audit trail.</p>
+            </div>
+          </div>
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="bg-slate-900 text-slate-400 py-8 text-center">
+        <p>&copy; 2026 SurakshaKhadya. All rights reserved.</p>
+      </footer>
     </div>
   );
 }
