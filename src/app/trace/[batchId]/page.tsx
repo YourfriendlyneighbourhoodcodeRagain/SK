@@ -1,11 +1,10 @@
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { MapPin, Calendar, Scale, Sprout, Truck, Store, FlaskConical, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { MapPin, Calendar, Scale, Sprout, Truck, Store, FlaskConical, AlertTriangle, CheckCircle2, ShieldCheck, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 
-type Handoff = { stage: string; location: string | null; created_at: string; notes: string | null; current_hash?: string | null };
-type LabTest = { passed: boolean; residue_level_ppm: number; max_permissible_limit_ppm: number; lab_name: string };
+type Handoff = { stage: string; location: string | null; created_at: string; notes: string | null; prev_hash?: string | null; current_hash?: string | null };
+type LabTest = { passed: boolean; residue_level_ppm: number; max_permissible_limit_ppm: number; lab_name: string; report_url?: string | null; created_at?: string };
 type TraceBatch = {
   batch_code: string; crop_type: string; quantity_kg: number; harvest_date: string; farm_location: string;
   status: string; is_recalled: boolean; profiles?: { full_name: string; location: string | null } | null;
@@ -65,6 +64,11 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
   }
 
   const isRecalled = displayBatch.is_recalled;
+  const orderedHandoffs = [...(displayBatch.handoffs ?? [])].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  const latestLabTest = [...(displayBatch.lab_tests ?? [])].sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())[0];
+  const safetyStatus = isRecalled ? 'Recalled' : !latestLabTest ? 'Pending lab test' : latestLabTest.passed ? 'Safe to consume' : 'Lab test failed';
+  const chainVerified = orderedHandoffs.length > 0 && orderedHandoffs.every((handoff, index) => Boolean(handoff.current_hash) && (index === 0 || handoff.prev_hash === orderedHandoffs[index - 1].current_hash));
+  const retailHandoff = orderedHandoffs.findLast((handoff) => handoff.stage === 'retail');
 
   return (
     <div className="min-h-screen bg-slate-50 pb-12">
@@ -79,27 +83,30 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
 
       <main className="container mx-auto max-w-4xl p-4 mt-6 space-y-6">
         {isRecalled && (
-          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-sm flex items-start space-x-3">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 shadow-sm">
+            <div className="flex items-start space-x-3">
             <AlertTriangle className="h-6 w-6 flex-shrink-0" />
             <div>
               <h3 className="font-bold text-lg">Product Recall Alert</h3>
-              <p>This batch has been recalled due to safety concerns. Do not consume.</p>
+              <p>This batch has been recalled due to a recorded safety concern. Do not consume it; return it to the retailer or follow local food-safety guidance.</p>
+            </div>
             </div>
           </div>
         )}
 
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+        <div className="portal-surface flex flex-col items-start justify-between gap-4 p-6 md:flex-row md:items-center">
           <div>
+            <p className="mb-1 text-sm font-semibold uppercase tracking-wide text-green-700">Consumer trace record</p>
             <h1 className="text-3xl font-bold text-slate-900">{displayBatch.crop_type}</h1>
             <p className="text-slate-500 font-mono mt-1">Batch ID: {displayBatch.batch_code}</p>
           </div>
-          <Badge variant={isRecalled ? 'destructive' : 'default'} className={!isRecalled ? 'bg-green-600' : ''}>
-            {isRecalled ? 'RECALLED' : displayBatch.status.toUpperCase().replace('_', ' ')}
-          </Badge>
+          <div className={`rounded-xl border p-4 ${isRecalled || latestLabTest?.passed === false ? 'border-red-200 bg-red-50 text-red-800' : latestLabTest ? 'border-green-200 bg-green-50 text-green-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+            <p className="text-xs font-semibold uppercase tracking-wide">Food safety status</p><p className="mt-1 text-xl font-bold">{safetyStatus}</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card>
+          <Card className="portal-surface">
             <CardHeader>
               <CardTitle className="flex items-center text-lg">
                 <MapPin className="mr-2 h-5 w-5 text-green-600" />
@@ -126,7 +133,7 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="portal-surface">
             <CardHeader>
               <CardTitle className="flex items-center text-lg">
                 <FlaskConical className="mr-2 h-5 w-5 text-blue-600" />
@@ -159,6 +166,7 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
                       <span className="text-slate-500">Testing Lab</span>
                       <span className="font-medium">{test.lab_name}</span>
                     </div>
+                    {test.report_url && <a href={test.report_url} target="_blank" rel="noreferrer" className="inline-flex items-center text-sm font-semibold text-green-700 hover:underline">View lab certificate <ExternalLink className="ml-1 h-3 w-3" /></a>}
                   </div>
                 ))
               ) : (
@@ -168,26 +176,31 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
           </Card>
         </div>
 
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card className="portal-surface"><CardContent className="flex items-start gap-3 p-5"><ShieldCheck className={`mt-0.5 h-6 w-6 ${chainVerified ? 'text-green-700' : 'text-amber-600'}`} /><div><p className="font-semibold text-slate-900">{chainVerified ? 'Ledger verified' : 'Ledger review needed'}</p><p className="mt-1 text-sm text-slate-600">{chainVerified ? 'Each recorded handoff links to the prior record.' : 'This batch has no complete handoff chain to verify yet.'}</p></div></CardContent></Card>
+          <Card className="portal-surface"><CardContent className="flex items-start gap-3 p-5"><Store className="mt-0.5 h-6 w-6 text-green-700" /><div><p className="font-semibold text-slate-900">Retail status</p><p className="mt-1 text-sm text-slate-600">{retailHandoff ? `Available via ${retailHandoff.location ?? 'recorded retailer'}` : 'Not yet recorded on a retail shelf.'}</p></div></CardContent></Card>
+        </div>
+
         <h2 className="text-2xl font-bold mt-8 mb-4 px-2">Supply Chain Journey</h2>
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+        <div className="portal-surface p-6">
           <div className="relative border-l-2 border-slate-200 ml-4 space-y-8 pb-4">
             {displayBatch.handoffs?.sort((a: Handoff, b: Handoff) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map((handoff: Handoff, index: number) => {
               let Icon = Sprout;
-              let iconColor = 'text-green-600';
+              let iconColor = 'text-green-700';
               let bgColor = 'bg-green-100';
               
               if (handoff.stage === 'aggregation') {
                 Icon = Scale;
-                iconColor = 'text-blue-600';
-                bgColor = 'bg-blue-100';
+                iconColor = 'text-green-700';
+                bgColor = 'bg-green-100';
               } else if (handoff.stage === 'logistics') {
                 Icon = Truck;
-                iconColor = 'text-amber-600';
-                bgColor = 'bg-amber-100';
+                iconColor = 'text-green-700';
+                bgColor = 'bg-green-100';
               } else if (handoff.stage === 'retail') {
                 Icon = Store;
-                iconColor = 'text-purple-600';
-                bgColor = 'bg-purple-100';
+                iconColor = 'text-green-700';
+                bgColor = 'bg-green-100';
               }
 
               return (
@@ -211,6 +224,7 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
                 </div>
               );
             })}
+            {orderedHandoffs.length === 0 && <p className="pl-8 text-sm text-slate-500">No handoffs have been recorded for this batch yet.</p>}
           </div>
         </div>
       </main>
