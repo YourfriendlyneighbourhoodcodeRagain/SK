@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { generateHash, getAuthenticatedActor, getPreviousHash } from '@/lib/blockchain';
+import { PortalShell } from '@/components/portal-shell';
 
 export default function AggregatorDashboard() {
   const [batchId, setBatchId] = useState('');
@@ -99,23 +100,18 @@ export default function AggregatorDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4">
-      <header className="mb-6 flex items-center bg-blue-700 text-white p-4 rounded-lg shadow">
-        <ClipboardCheck className="h-8 w-8 mr-3" />
-        <h1 className="text-2xl font-bold">Aggregator / Quality Hub</h1>
-      </header>
-
-      <main className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+    <PortalShell title="Aggregator quality hub" description="Receive batches and attach lab safety evidence." icon={ClipboardCheck}>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {statusMsg && (
-          <div className={`col-span-1 md:col-span-2 p-4 rounded-lg font-bold text-center ${statusMsg.startsWith('Success') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+          <div className={`col-span-1 p-4 text-center font-medium md:col-span-2 ${statusMsg.startsWith('Success') ? 'portal-status-success' : 'portal-status-error'}`}>
             {statusMsg}
           </div>
         )}
 
-        <Card className="border-t-4 border-t-blue-500 shadow-md">
+        <Card className="portal-surface">
           <CardHeader>
             <CardTitle className="text-xl flex items-center">
-              <QrCode className="mr-2 h-5 w-5 text-blue-600" />
+              <QrCode className="mr-2 h-5 w-5 text-green-700" />
               Receive Batch
             </CardTitle>
           </CardHeader>
@@ -126,7 +122,7 @@ export default function AggregatorDashboard() {
                 <Input 
                   id="batchIdReceive"
                   placeholder="e.g. SK-2026-X981" 
-                  className="text-lg py-6"
+                  className="portal-field py-5"
                   value={batchId}
                   onChange={(e) => setBatchId(e.target.value)}
                   required
@@ -137,23 +133,23 @@ export default function AggregatorDashboard() {
                 <Input 
                   id="notes"
                   placeholder="e.g. Sorted 480kg good quality" 
-                  className="text-lg py-6"
+                  className="portal-field py-5"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   required
                 />
               </div>
-              <Button type="submit" className="w-full py-6 text-lg bg-blue-600 hover:bg-blue-700">
+              <Button type="submit" className="portal-action w-full py-5 text-base">
                 Log Receipt
               </Button>
             </form>
           </CardContent>
         </Card>
 
-        <Card className="border-t-4 border-t-purple-500 shadow-md">
+        <Card className="portal-surface">
           <CardHeader>
             <CardTitle className="text-xl flex items-center">
-              <FlaskConical className="mr-2 h-5 w-5 text-purple-600" />
+              <FlaskConical className="mr-2 h-5 w-5 text-green-700" />
               Attach Lab Test
             </CardTitle>
           </CardHeader>
@@ -164,7 +160,7 @@ export default function AggregatorDashboard() {
                 <Input 
                   id="batchIdTest"
                   placeholder="e.g. SK-2026-X981" 
-                  className="text-lg py-6"
+                  className="portal-field py-5"
                   value={batchId}
                   onChange={(e) => setBatchId(e.target.value)}
                   required
@@ -175,7 +171,7 @@ export default function AggregatorDashboard() {
                 <Input 
                   id="labName"
                   placeholder="e.g. AgriSafe Labs" 
-                  className="text-lg py-6"
+                  className="portal-field py-5"
                   value={labName}
                   onChange={(e) => setLabName(e.target.value)}
                   required
@@ -189,7 +185,7 @@ export default function AggregatorDashboard() {
                     type="number"
                     step="0.01"
                     placeholder="0.01" 
-                    className="text-lg py-6"
+                    className="portal-field py-5"
                     value={residueLevel}
                     onChange={(e) => setResidueLevel(e.target.value)}
                     required
@@ -202,7 +198,7 @@ export default function AggregatorDashboard() {
                     type="number"
                     step="0.01"
                     placeholder="0.05" 
-                    className="text-lg py-6"
+                    className="portal-field py-5"
                     value={maxLimit}
                     onChange={(e) => setMaxLimit(e.target.value)}
                     required
@@ -211,14 +207,14 @@ export default function AggregatorDashboard() {
               </div>
               <div>
                 <Label htmlFor="reportUrl" className="text-base">Lab Certificate URL / ID</Label>
-                <Input id="reportUrl" placeholder="https://lab.example/report or certificate ID" className="text-lg py-6" value={reportUrl} onChange={(e) => setReportUrl(e.target.value)} />
+                <Input id="reportUrl" placeholder="https://lab.example/report or certificate ID" className="portal-field py-5" value={reportUrl} onChange={(e) => setReportUrl(e.target.value)} />
               </div>
               
               <div className="flex gap-4 pt-2">
                 <Button 
                   type="button" 
                   variant={passed ? 'default' : 'outline'}
-                  className={`flex-1 py-6 text-lg ${passed ? 'bg-green-600 hover:bg-green-700' : 'border-green-200 text-green-700'}`}
+                  className={`flex-1 py-5 text-base ${passed ? 'portal-action' : 'border-green-200 text-green-700 hover:bg-green-50'}`}
                   onClick={() => setPassed(true)}
                 >
                   <CheckCircle2 className="mr-2 h-5 w-5" /> PASS
@@ -226,20 +222,20 @@ export default function AggregatorDashboard() {
                 <Button 
                   type="button" 
                   variant={!passed ? 'destructive' : 'outline'}
-                  className={`flex-1 py-6 text-lg ${!passed ? '' : 'border-red-200 text-red-700'}`}
+                  className={`flex-1 py-5 text-base ${!passed ? '' : 'border-red-200 text-red-700 hover:bg-red-50'}`}
                   onClick={() => setPassed(false)}
                 >
                   <AlertTriangle className="mr-2 h-5 w-5" /> FAIL
                 </Button>
               </div>
 
-              <Button type="submit" className="w-full py-6 text-lg bg-purple-600 hover:bg-purple-700 mt-2">
+              <Button type="submit" className="portal-action mt-2 w-full py-5 text-base">
                 Submit Test Results
               </Button>
             </form>
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </div>
+    </PortalShell>
   );
 }

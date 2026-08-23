@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { QRCodeSVG } from 'qrcode.react';
 import { generateHash, getAuthenticatedActor, getPreviousHash } from '@/lib/blockchain';
+import { PortalShell } from '@/components/portal-shell';
 
 export default function RetailerDashboard() {
   const [batchId, setBatchId] = useState('');
@@ -101,25 +102,20 @@ export default function RetailerDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4">
-      <header className="mb-6 flex items-center bg-purple-700 text-white p-4 rounded-lg shadow">
-        <Store className="h-8 w-8 mr-3" />
-        <h1 className="text-2xl font-bold">Retailer Dashboard</h1>
-      </header>
-
-      <main className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+    <PortalShell title="Retailer dashboard" description="Put verified batches on shelves and manage safety recalls." icon={Store}>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {/* Receive at Store */}
-        <Card className="border-t-4 border-t-purple-500 shadow-md">
+        <Card className="portal-surface">
           <CardHeader>
             <CardTitle className="text-xl flex items-center">
-              <Store className="mr-2 h-5 w-5 text-purple-600" />
+              <Store className="mr-2 h-5 w-5 text-green-700" />
               Receive at Store (On Shelf)
             </CardTitle>
             <CardDescription>Log receipt and generate consumer QR code</CardDescription>
           </CardHeader>
           <CardContent>
             {statusMsg && (
-              <div className={`mb-4 p-3 rounded font-bold text-sm ${statusMsg.startsWith('Success') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+              <div className={`mb-4 p-3 text-sm font-medium ${statusMsg.startsWith('Success') ? 'portal-status-success' : 'portal-status-error'}`}>
                 {statusMsg}
               </div>
             )}
@@ -131,7 +127,7 @@ export default function RetailerDashboard() {
                   <Input 
                     id="batchIdReceive"
                     placeholder="e.g. SK-2026-X981" 
-                    className="text-lg py-6"
+                    className="portal-field py-5"
                     value={batchId}
                     onChange={(e) => setBatchId(e.target.value)}
                     required
@@ -142,19 +138,19 @@ export default function RetailerDashboard() {
                   <Input 
                     id="storeName"
                     placeholder="e.g. FreshMart Mumbai" 
-                    className="text-lg py-6"
+                    className="portal-field py-5"
                     value={storeName}
                     onChange={(e) => setStoreName(e.target.value)}
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full py-6 text-lg bg-purple-600 hover:bg-purple-700">
+                <Button type="submit" className="portal-action w-full py-5 text-base">
                   Mark &quot;On Shelf&quot;
                 </Button>
               </form>
             ) : (
               <div className="text-center space-y-4">
-                <div className="bg-slate-100 p-4 rounded-lg inline-block border-2 border-slate-200">
+                <div className="inline-block rounded-lg border border-green-100 bg-white p-4 shadow-sm">
                   <QRCodeSVG 
                     value={`${typeof window !== 'undefined' ? window.location.origin : ''}/trace/${shelfQR}`}
                     size={200} 
@@ -175,7 +171,7 @@ export default function RetailerDashboard() {
         </Card>
 
         {/* Recall Module */}
-        <Card className="border-t-4 border-t-red-600 shadow-md bg-red-50">
+        <Card className="rounded-xl border border-red-200 bg-white shadow-lg">
           <CardHeader>
             <CardTitle className="text-xl flex items-center text-red-700">
               <ShieldAlert className="mr-2 h-5 w-5" />
@@ -185,7 +181,7 @@ export default function RetailerDashboard() {
           </CardHeader>
           <CardContent>
             {recallMsg && (
-              <div className={`mb-4 p-3 rounded font-bold text-sm ${recallMsg.startsWith('URGENT') ? 'bg-red-200 text-red-900 border border-red-300' : 'bg-red-100 text-red-800'}`}>
+              <div className="portal-status-error mb-4 p-3 text-sm font-medium">
                 {recallMsg}
               </div>
             )}
@@ -196,7 +192,7 @@ export default function RetailerDashboard() {
                 <Input 
                   id="recallBatchId"
                   placeholder="e.g. SK-2026-X981" 
-                  className="text-lg py-6 border-red-300 focus-visible:ring-red-500"
+                  className="border-red-200 py-5 focus-visible:ring-red-500"
                   value={recallBatchId}
                   onChange={(e) => setRecallBatchId(e.target.value)}
                   required
@@ -207,20 +203,20 @@ export default function RetailerDashboard() {
                 <Input 
                   id="recallReason"
                   placeholder="e.g. High pesticide residue detected" 
-                  className="text-lg py-6 border-red-300 focus-visible:ring-red-500"
+                  className="border-red-200 py-5 focus-visible:ring-red-500"
                   value={recallReason}
                   onChange={(e) => setRecallReason(e.target.value)}
                   required
                 />
               </div>
-              <Button type="submit" variant="destructive" className="w-full py-6 text-lg bg-red-600 hover:bg-red-700 font-bold">
+              <Button type="submit" variant="destructive" className="w-full py-5 text-base font-semibold">
                 <AlertTriangle className="mr-2 h-5 w-5" />
                 INITIATE RECALL
               </Button>
             </form>
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </div>
+    </PortalShell>
   );
 }

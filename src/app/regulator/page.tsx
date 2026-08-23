@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { PortalShell } from '@/components/portal-shell';
 
 type LabTest = { passed: boolean; residue_level_ppm: number; max_permissible_limit_ppm: number };
 type Handoff = { prev_hash: string | null; current_hash: string; created_at: string };
@@ -67,23 +68,19 @@ export default function RegulatorDashboard() {
   const chainIssues = batches.filter(chainIssue).length;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-6">
-      <header className="mx-auto mb-6 flex max-w-6xl items-center justify-between rounded-xl bg-slate-900 p-5 text-white shadow">
-        <div className="flex items-center gap-3"><ShieldCheck className="h-8 w-8 text-emerald-400" /><div><h1 className="text-2xl font-bold">Regulator Compliance Console</h1><p className="text-sm text-slate-300">Food safety oversight and traceability audit</p></div></div>
-        <Button onClick={() => void loadBatches()} disabled={loading} variant="secondary"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
-      </header>
-
-      <main className="mx-auto max-w-6xl space-y-6">
-        {message && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">{message}</div>}
+    <PortalShell title="Regulator compliance console" description="Food safety oversight and traceability audit." icon={ShieldCheck}>
+      <div className="space-y-6">
+        <div className="flex justify-end"><Button onClick={() => void loadBatches()} disabled={loading} className="bg-green-700 hover:bg-green-800"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button></div>
+        {message && <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">{message}</div>}
         <section className="grid gap-4 md:grid-cols-4">
-          <StatCard label="Tracked batches" value={batches.length} icon={<ClipboardCheck className="text-blue-600" />} />
+          <StatCard label="Tracked batches" value={batches.length} icon={<ClipboardCheck className="text-green-700" />} />
           <StatCard label="Active recalls" value={recalls} icon={<AlertTriangle className="text-red-600" />} tone="red" />
-          <StatCard label="Failed lab tests" value={failed} icon={<ShieldX className="text-amber-600" />} tone="amber" />
-          <StatCard label="Chain warnings" value={chainIssues} icon={<ShieldCheck className="text-purple-600" />} tone="purple" />
+          <StatCard label="Failed lab tests" value={failed} icon={<ShieldX className="text-red-600" />} tone="red" />
+          <StatCard label="Chain warnings" value={chainIssues} icon={<ShieldCheck className="text-green-700" />} />
         </section>
 
-        <Card>
-          <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between"><CardTitle>Batch compliance register</CardTitle><div className="flex flex-wrap gap-2"><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search batch, crop, location" className="w-56" /><Button variant={filter === 'all' ? 'default' : 'outline'} onClick={() => setFilter('all')}>All</Button><Button variant={filter === 'recalls' ? 'destructive' : 'outline'} onClick={() => setFilter('recalls')}>Recalls</Button><Button variant={filter === 'failed' ? 'default' : 'outline'} onClick={() => setFilter('failed')}>Lab failures</Button></div></CardHeader>
+        <Card className="portal-surface">
+          <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between"><CardTitle>Batch compliance register</CardTitle><div className="flex flex-wrap gap-2"><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search batch, crop, location" className="portal-field w-56" /><Button className={filter === 'all' ? 'portal-action' : ''} variant={filter === 'all' ? 'default' : 'outline'} onClick={() => setFilter('all')}>All</Button><Button variant={filter === 'recalls' ? 'destructive' : 'outline'} onClick={() => setFilter('recalls')}>Recalls</Button><Button className={filter === 'failed' ? 'portal-action' : ''} variant={filter === 'failed' ? 'default' : 'outline'} onClick={() => setFilter('failed')}>Lab failures</Button></div></CardHeader>
           <CardContent>
             <Table><TableHeader><TableRow><TableHead>Batch</TableHead><TableHead>Source</TableHead><TableHead>Lab safety</TableHead><TableHead>Audit chain</TableHead><TableHead>Status</TableHead><TableHead>Trace</TableHead></TableRow></TableHeader><TableBody>
               {!loading && visibleBatches.length === 0 && <TableRow><TableCell colSpan={6} className="py-10 text-center text-slate-500">No matching batches found.</TableCell></TableRow>}
@@ -91,12 +88,12 @@ export default function RegulatorDashboard() {
             </TableBody></Table>
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </div>
+    </PortalShell>
   );
 }
 
-function StatCard({ label, value, icon, tone = 'default' }: { label: string; value: number; icon: ReactNode; tone?: 'default' | 'red' | 'amber' | 'purple' }) {
-  const toneClass = { default: 'border-slate-200', red: 'border-red-200', amber: 'border-amber-200', purple: 'border-purple-200' }[tone];
-  return <Card className={toneClass}><CardContent className="flex items-center justify-between p-5"><div><p className="text-sm text-slate-500">{label}</p><p className="mt-1 text-3xl font-bold">{value}</p></div>{icon}</CardContent></Card>;
+function StatCard({ label, value, icon, tone = 'default' }: { label: string; value: number; icon: ReactNode; tone?: 'default' | 'red' }) {
+  const toneClass = tone === 'red' ? 'border-red-200' : 'border-green-100';
+  return <Card className={`rounded-xl ${toneClass} bg-white shadow-sm`}><CardContent className="flex items-center justify-between p-5"><div><p className="text-sm text-slate-500">{label}</p><p className="mt-1 text-3xl font-bold text-slate-900">{value}</p></div>{icon}</CardContent></Card>;
 }

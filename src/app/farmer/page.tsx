@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { Sprout, Calendar, MapPin, Scale, PlusCircle, Printer } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { generateHash, getAuthenticatedActor } from '@/lib/blockchain';
+import { PortalShell } from '@/components/portal-shell';
 
 export default function FarmerDashboard() {
   const [cropType, setCropType] = useState('');
@@ -71,16 +72,10 @@ export default function FarmerDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-green-50 p-4">
-      <header className="mb-6 flex items-center bg-green-700 text-white p-4 rounded-lg shadow">
-        <Sprout className="h-8 w-8 mr-3" />
-        <h1 className="text-2xl font-bold">Farmer Dashboard</h1>
-      </header>
-
-      <main className="max-w-2xl mx-auto">
+    <PortalShell title="Farmer dashboard" description="Register each harvest and create its traceability record." icon={Sprout} contentClassName="max-w-2xl">
         {!generatedBatch ? (
-          <div className="bg-white p-6 rounded-2xl shadow-lg border-2 border-green-200">
-            <h2 className="text-3xl font-extrabold text-green-800 mb-6 text-center">Add New Crop</h2>
+          <div className="portal-surface p-6 md:p-8">
+            <h2 className="mb-6 text-2xl font-bold text-slate-900">Add new harvest</h2>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label className="flex items-center text-xl font-bold text-slate-700 mb-2">
@@ -90,7 +85,7 @@ export default function FarmerDashboard() {
                   type="text"
                   required
                   placeholder="e.g. Tomatoes"
-                  className="w-full text-2xl p-4 border-2 border-slate-300 rounded-xl focus:border-green-500 focus:ring-4 focus:ring-green-200 transition-all"
+                  className="portal-field w-full rounded-lg p-3 text-base"
                   value={cropType}
                   onChange={(e) => setCropType(e.target.value)}
                 />
@@ -103,7 +98,7 @@ export default function FarmerDashboard() {
                 <input
                   type="date"
                   required
-                  className="w-full text-2xl p-4 border-2 border-slate-300 rounded-xl focus:border-green-500 focus:ring-4 focus:ring-green-200 transition-all"
+                  className="portal-field w-full rounded-lg p-3 text-base"
                   value={harvestDate}
                   onChange={(e) => setHarvestDate(e.target.value)}
                 />
@@ -117,7 +112,7 @@ export default function FarmerDashboard() {
                   type="text"
                   required
                   placeholder="Village/City Name"
-                  className="w-full text-2xl p-4 border-2 border-slate-300 rounded-xl focus:border-green-500 focus:ring-4 focus:ring-green-200 transition-all"
+                  className="portal-field w-full rounded-lg p-3 text-base"
                   value={farmLocation}
                   onChange={(e) => setFarmLocation(e.target.value)}
                 />
@@ -132,7 +127,7 @@ export default function FarmerDashboard() {
                   required
                   min="1"
                   placeholder="e.g. 50"
-                  className="w-full text-2xl p-4 border-2 border-slate-300 rounded-xl focus:border-green-500 focus:ring-4 focus:ring-green-200 transition-all"
+                  className="portal-field w-full rounded-lg p-3 text-base"
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
                 />
@@ -141,7 +136,7 @@ export default function FarmerDashboard() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full bg-green-600 hover:bg-green-700 text-white text-2xl font-bold py-6 rounded-xl flex items-center justify-center transition-all disabled:opacity-50 shadow-lg mt-8"
+                className="portal-action mt-6 flex w-full items-center justify-center rounded-lg py-3 text-base disabled:opacity-50"
               >
                 <PlusCircle className="mr-3 h-8 w-8" />
                 {isSubmitting ? 'Saving...' : 'Save & Get QR Code'}
@@ -149,10 +144,10 @@ export default function FarmerDashboard() {
             </form>
           </div>
         ) : (
-          <div className="bg-white p-8 rounded-2xl shadow-lg border-2 border-green-200 text-center">
-            <div className="bg-green-100 text-green-800 p-4 rounded-xl mb-6">
-              <h2 className="text-3xl font-extrabold mb-2">Success!</h2>
-              <p className="text-xl">Your crop has been registered.</p>
+          <div className="portal-surface p-6 text-center md:p-8">
+            <div className="portal-status-success mb-6 p-4">
+              <h2 className="mb-2 text-2xl font-bold">Harvest registered</h2>
+              <p>Your crop has been registered.</p>
             </div>
             
             <div className="mb-8">
@@ -173,7 +168,7 @@ export default function FarmerDashboard() {
             <div className="flex flex-col gap-4">
               <button 
                 onClick={() => window.print()}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white text-2xl font-bold py-4 rounded-xl flex items-center justify-center transition-all shadow"
+                className="portal-action flex w-full items-center justify-center rounded-lg py-3 text-base"
               >
                 <Printer className="mr-3 h-6 w-6" />
                 Print QR Code
@@ -181,14 +176,13 @@ export default function FarmerDashboard() {
               
               <button 
                 onClick={resetForm}
-                className="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 text-xl font-bold py-4 rounded-xl transition-all"
+                className="w-full rounded-lg border border-slate-200 bg-white py-3 text-base font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Add Another Crop
               </button>
             </div>
           </div>
         )}
-      </main>
-    </div>
+    </PortalShell>
   );
 }

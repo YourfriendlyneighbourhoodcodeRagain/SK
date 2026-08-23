@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { generateHash, getAuthenticatedActor, getPreviousHash } from '@/lib/blockchain';
+import { PortalShell } from '@/components/portal-shell';
 
 export default function DistributorDashboard() {
   const [batchId, setBatchId] = useState('');
@@ -61,23 +62,17 @@ export default function DistributorDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4">
-      <header className="mb-6 flex items-center bg-amber-600 text-white p-4 rounded-lg shadow">
-        <Truck className="h-8 w-8 mr-3" />
-        <h1 className="text-2xl font-bold">Distributor / Logistics Hub</h1>
-      </header>
-
-      <main className="max-w-2xl mx-auto">
+    <PortalShell title="Distributor logistics hub" description="Record the transport conditions for every handoff." icon={Truck} contentClassName="max-w-2xl">
         {statusMsg && (
-          <div className={`mb-6 p-4 rounded-lg font-bold text-center ${statusMsg.startsWith('Success') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+          <div className={`mb-6 p-4 text-center font-medium ${statusMsg.startsWith('Success') ? 'portal-status-success' : 'portal-status-error'}`}>
             {statusMsg}
           </div>
         )}
 
-        <Card className="border-t-4 border-t-amber-500 shadow-md">
+        <Card className="portal-surface">
           <CardHeader>
             <CardTitle className="text-2xl flex items-center">
-              <Truck className="mr-2 h-6 w-6 text-amber-600" />
+              <Truck className="mr-2 h-6 w-6 text-green-700" />
               Log Transport / Handoff
             </CardTitle>
           </CardHeader>
@@ -88,7 +83,7 @@ export default function DistributorDashboard() {
                 <Input 
                   id="batchId"
                   placeholder="e.g. SK-2026-X981" 
-                  className="text-lg py-6 mt-1"
+                  className="portal-field mt-1 py-5"
                   value={batchId}
                   onChange={(e) => setBatchId(e.target.value)}
                   required
@@ -101,7 +96,7 @@ export default function DistributorDashboard() {
                   <Input 
                     id="origin"
                     placeholder="e.g. Pune Hub" 
-                    className="text-lg py-6 mt-1"
+                    className="portal-field mt-1 py-5"
                     value={origin}
                     onChange={(e) => setOrigin(e.target.value)}
                     required
@@ -112,7 +107,7 @@ export default function DistributorDashboard() {
                   <Input 
                     id="destination"
                     placeholder="e.g. Mumbai Store" 
-                    className="text-lg py-6 mt-1"
+                    className="portal-field mt-1 py-5"
                     value={destination}
                     onChange={(e) => setDestination(e.target.value)}
                     required
@@ -126,7 +121,7 @@ export default function DistributorDashboard() {
                   id="temperature"
                   type="number"
                   placeholder="e.g. 4" 
-                  className="text-lg py-6 mt-1"
+                  className="portal-field mt-1 py-5"
                   value={temperature}
                   onChange={(e) => setTemperature(e.target.value)}
                   required
@@ -138,19 +133,18 @@ export default function DistributorDashboard() {
                 <Input 
                   id="notes"
                   placeholder="e.g. Refrigerated truck, no delays" 
-                  className="text-lg py-6 mt-1"
+                  className="portal-field mt-1 py-5"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                 />
               </div>
 
-              <Button type="submit" className="w-full py-6 text-xl bg-amber-600 hover:bg-amber-700 mt-4">
+              <Button type="submit" className="portal-action mt-4 w-full py-5 text-base">
                 Confirm Handoff
               </Button>
             </form>
           </CardContent>
         </Card>
-      </main>
-    </div>
+    </PortalShell>
   );
 }
