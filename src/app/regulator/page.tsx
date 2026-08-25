@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { PortalShell } from '@/components/portal-shell';
 
 type LabTest = { test_status: 'PASS' | 'FAIL'; residue_ppm: number; max_limit_ppm: number; lab_name: string; certificate_url: string | null; created_at: string };
-type Handoff = { created_at: string; stage: string; assigned_retailer_name: string | null; notes: string | null };
+type Handoff = { created_at: string; stage: string; assigned_distributor_name?: string | null; assigned_retailer_name: string | null; notes: string | null };
 type Batch = {
   id: string; batch_code: string; crop_name: string; farm_location: string; status: string;
   is_recalled: boolean; created_at: string; lab_tests: LabTest[]; batch_handoffs: Handoff[];
@@ -44,7 +44,7 @@ export default function RegulatorDashboard() {
     }
     const { data, error } = await supabase
       .from('batches')
-      .select('id, batch_code, crop_name, farm_location, status, is_recalled, created_at, lab_tests(test_status, residue_ppm, max_limit_ppm, lab_name, certificate_url, created_at), batch_handoffs(created_at, stage, assigned_retailer_name, notes)')
+      .select('id, batch_code, crop_name, farm_location, status, is_recalled, created_at, lab_tests(test_status, residue_ppm, max_limit_ppm, lab_name, certificate_url, created_at), batch_handoffs(created_at, stage, assigned_distributor_name, assigned_retailer_name, notes)')
       .order('created_at', { ascending: false });
     if (error) setMessage(error.message);
     else {

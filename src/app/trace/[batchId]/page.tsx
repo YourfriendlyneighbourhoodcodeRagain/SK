@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MapPin, Calendar, Scale, Sprout, Truck, Store, FlaskConical, AlertTriangle, CheckCircle2, ShieldCheck, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 
-type Handoff = { stage: string; assigned_retailer_name: string | null; created_at: string; notes: string | null };
+type Handoff = { stage: string; assigned_distributor_name?: string | null; assigned_retailer_name: string | null; created_at: string; notes: string | null };
 type LabTest = { test_status: 'PASS' | 'FAIL'; residue_ppm: number; max_limit_ppm: number; lab_name: string; certificate_url?: string | null; created_at?: string };
 type TraceBatch = {
   batch_code: string; crop_name: string; total_weight_kg: number; harvest_date: string; farm_location: string;
@@ -211,7 +211,7 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
                     <h3 className="font-bold text-lg capitalize">{handoff.stage}</h3>
                     <div className="flex items-center text-slate-500 text-sm mt-1 space-x-4">
                       <span className="flex items-center"><Calendar className="h-3 w-3 mr-1" /> {new Date(handoff.created_at).toLocaleString()}</span>
-                      <span className="flex items-center"><MapPin className="h-3 w-3 mr-1" /> {handoff.assigned_retailer_name ?? 'Supply-chain update'}</span>
+                      <span className="flex items-center"><MapPin className="h-3 w-3 mr-1" /> {handoff.assigned_distributor_name ?? handoff.assigned_retailer_name ?? 'Supply-chain update'}</span>
                     </div>
                     {handoff.notes && <p className="mt-2 text-slate-700 bg-slate-50 p-2 rounded text-sm">{handoff.notes}</p>}
                   </div>

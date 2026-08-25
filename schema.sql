@@ -43,6 +43,7 @@ CREATE TABLE public.batch_handoffs (
   handler_id UUID REFERENCES public.profiles(id),
   stage TEXT NOT NULL,
   notes TEXT,
+  assigned_distributor_name TEXT,
   assigned_retailer_name TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
