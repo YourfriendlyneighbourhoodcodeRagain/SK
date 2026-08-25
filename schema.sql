@@ -44,6 +44,7 @@ CREATE TABLE public.batch_handoffs (
   stage TEXT NOT NULL,
   notes TEXT,
   assigned_distributor_name TEXT,
+  quantity_kg NUMERIC,
   assigned_retailer_name TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );

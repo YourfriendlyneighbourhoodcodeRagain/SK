@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ClipboardCheck, FlaskConical, Leaf, LogOut, MapPin, QrCode, ShieldAlert, Store, Truck } from 'lucide-react';
+import { ClipboardCheck, Leaf, LogOut, MapPin, ShieldAlert, Store, Truck } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,7 @@ export default function DashboardPage() {
       if (!user) { router.push('/login'); return; }
       const { data, error: profileError } = await supabase.from('profiles').select('full_name, role, location').eq('id', user.id).single();
       if (profileError || !data) { setError('Your account is authenticated, but its profile could not be loaded. Please contact an administrator.'); return; }
+      if (data.role === 'aggregator') { router.replace('/aggregator'); return; }
       setProfile(data as Profile);
     }
   }, [router]);
@@ -39,7 +40,6 @@ export default function DashboardPage() {
 
 function RoleActions({ role }: { role: Role }) {
   if (role === 'farmer') return <ActionCard title="Register a new harvest" description="Create a batch, record its farm origin, and generate a QR code." href="/farmer" icon={<Leaf className="h-8 w-8" />} color="bg-green-700 hover:bg-green-800" button="+ Register New Harvest Batch" />;
-  if (role === 'aggregator') return <div className="grid gap-5 md:grid-cols-2"><ActionCard title="Receive farmer batch" description="Scan or enter a farmer batch, review it, and record quality notes." href="/aggregator" icon={<QrCode className="h-8 w-8" />} color="bg-green-700 hover:bg-green-800" button="Open receive workflow" /><ActionCard title="Attach lab residue test" description="Scan or enter a batch before attaching residue and certificate results." href="/aggregator" icon={<FlaskConical className="h-8 w-8" />} color="bg-green-700 hover:bg-green-800" button="Open lab-test workflow" /></div>;
   if (role === 'distributor') return <ActionCard title="Log transport handoff" description="Record origin, destination, storage temperature, and transport notes." href="/distributor" icon={<Truck className="h-8 w-8" />} color="bg-green-700 hover:bg-green-800" button="Log Transport Handoff" />;
   if (role === 'retailer') return <div className="grid gap-5 md:grid-cols-2"><ActionCard title="Store shelf acceptance" description="Receive a batch at your store and generate a consumer QR code." href="/retailer" icon={<Store className="h-8 w-8" />} color="bg-green-700 hover:bg-green-800" button="Store Shelf Acceptance" /><ActionCard title="Safety recall" description="Immediately flag contaminated batches and begin a recall." href="/retailer" icon={<ShieldAlert className="h-8 w-8" />} color="bg-red-600 hover:bg-red-700" button="Trigger Contamination Recall" /></div>;
   return <ActionCard title="Compliance console" description="Review the complete batch register, lab safety outcomes, and recall alerts." href="/regulator" icon={<ClipboardCheck className="h-8 w-8" />} color="bg-green-700 hover:bg-green-800" button="Open Regulator Console" />;
