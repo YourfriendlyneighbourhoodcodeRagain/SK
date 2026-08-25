@@ -24,7 +24,7 @@ export default function DashboardPage() {
     return () => window.clearTimeout(timer);
     async function loadProfile() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.replace('/login'); return; }
+      if (!user) { router.push('/login'); return; }
       const { data, error: profileError } = await supabase.from('profiles').select('full_name, role, location').eq('id', user.id).single();
       if (profileError || !data) { setError('Your account is authenticated, but its profile could not be loaded. Please contact an administrator.'); return; }
       setProfile(data as Profile);

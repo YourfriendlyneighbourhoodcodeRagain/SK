@@ -1,13 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabaseClient';
 import { ClipboardCheck, QrCode, FlaskConical, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { generateHash, getAuthenticatedActor, getPreviousHash } from '@/lib/blockchain';
+import { getAuthenticatedActor } from '@/lib/blockchain';
 import { PortalShell } from '@/components/portal-shell';
 
 export default function AggregatorDashboard() {
@@ -37,20 +37,16 @@ export default function AggregatorDashboard() {
       // Update batch status
       await supabase
         .from('batches')
-        .update({ status: 'aggregated' })
+        .update({ status: 'received_by_aggregator' })
         .eq('id', batch.id);
 
       // Add handoff
-      const prevHash = await getPreviousHash(batch.id);
-      const { error: handoffError } = await supabase.from('handoffs').insert([
+      const { error: handoffError } = await supabase.from('batch_handoffs').insert([
         {
           batch_id: batch.id,
-          actor_id: user.id,
+          handler_id: user.id,
           stage: 'aggregation',
-          location: 'Aggregator Hub',
-          notes: notes,
-          prev_hash: prevHash,
-          current_hash: generateHash({ stage: 'aggregation', notes }, prevHash)
+          notes
         }
       ]);
       if (handoffError) throw handoffError;
@@ -81,10 +77,10 @@ export default function AggregatorDashboard() {
           batch_id: batch.id,
           tester_id: user.id,
           lab_name: labName,
-          residue_level_ppm: parseFloat(residueLevel),
-          max_permissible_limit_ppm: parseFloat(maxLimit),
-          passed: passed
-          ,report_url: reportUrl || null
+          residue_ppm: parseFloat(residueLevel),
+          max_limit_ppm: parseFloat(maxLimit),
+          test_status: passed ? 'PASS' : 'FAIL',
+          certificate_url: reportUrl || null
         }
       ]);
 

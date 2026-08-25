@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabaseClient';
 import { Sprout, Calendar, MapPin, Scale, PlusCircle, Printer } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { generateHash, getAuthenticatedActor } from '@/lib/blockchain';
+import { getAuthenticatedActor } from '@/lib/blockchain';
 import { PortalShell } from '@/components/portal-shell';
 
 export default function FarmerDashboard() {
@@ -25,35 +25,20 @@ export default function FarmerDashboard() {
       // Mock generation of batch code
       const batchCode = `SK-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
       
-      const { data: batch, error } = await supabase.from('batches').insert([
+      const { error } = await supabase.from('batches').insert([
         {
           batch_code: batchCode,
-          crop_type: cropType,
-          quantity_kg: parseFloat(quantity),
+          crop_name: cropType,
+          total_weight_kg: parseFloat(quantity),
           harvest_date: harvestDate,
           farm_location: farmLocation,
           farmer_id: user.id,
           status: 'harvested'
         }
-      ]).select('id').single();
+      ]);
 
       if (error) throw error;
       
-      // Also add initial handoff
-      const currentHash = generateHash({ batchCode, stage: 'harvest', location: farmLocation, quantity });
-      const { error: handoffError } = await supabase.from('handoffs').insert([
-        {
-          batch_id: batch.id,
-          actor_id: user.id,
-          stage: 'harvest',
-          location: farmLocation,
-          notes: `Harvested ${quantity}kg of ${cropType}`,
-          prev_hash: '0',
-          current_hash: currentHash
-        }
-      ]);
-      if (handoffError) throw handoffError;
-
       setGeneratedBatch(batchCode);
     } catch (error) {
       console.error('Error creating batch:', error);

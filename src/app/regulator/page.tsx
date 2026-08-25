@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Download, ExternalLink, RefreshCw, ShieldCheck, ShieldX } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabaseClient';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,11 +11,11 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PortalShell } from '@/components/portal-shell';
 
-type LabTest = { passed: boolean; residue_level_ppm: number; max_permissible_limit_ppm: number; lab_name: string; report_url: string | null; created_at: string };
-type Handoff = { prev_hash: string | null; current_hash: string; created_at: string; stage: string; location: string | null; notes: string | null };
+type LabTest = { test_status: 'PASS' | 'FAIL'; residue_ppm: number; max_limit_ppm: number; lab_name: string; certificate_url: string | null; created_at: string };
+type Handoff = { created_at: string; stage: string; assigned_retailer_name: string | null; notes: string | null };
 type Batch = {
-  id: string; batch_code: string; crop_type: string; farm_location: string; status: string;
-  is_recalled: boolean; created_at: string; lab_tests: LabTest[]; handoffs: Handoff[];
+  id: string; batch_code: string; crop_name: string; farm_location: string; status: string;
+  is_recalled: boolean; created_at: string; lab_tests: LabTest[]; batch_handoffs: Handoff[];
 };
 
 export default function RegulatorDashboard() {
@@ -44,7 +44,7 @@ export default function RegulatorDashboard() {
     }
     const { data, error } = await supabase
       .from('batches')
-      .select('id, batch_code, crop_type, farm_location, status, is_recalled, created_at, lab_tests(passed, residue_level_ppm, max_permissible_limit_ppm, lab_name, report_url, created_at), handoffs(prev_hash, current_hash, created_at, stage, location, notes)')
+      .select('id, batch_code, crop_name, farm_location, status, is_recalled, created_at, lab_tests(test_status, residue_ppm, max_limit_ppm, lab_name, certificate_url, created_at), batch_handoffs(created_at, stage, assigned_retailer_name, notes)')
       .order('created_at', { ascending: false });
     if (error) setMessage(error.message);
     else {
@@ -59,11 +59,10 @@ export default function RegulatorDashboard() {
     return () => window.clearTimeout(timer);
   }, [loadBatches]);
 
-  const failedTest = (batch: Batch) => batch.lab_tests.some((test) => !test.passed);
-  const chainIssue = (batch: Batch) => [...batch.handoffs].sort((a, b) => a.created_at.localeCompare(b.created_at)).some((handoff, index, ordered) =>
-    !handoff.current_hash || (index > 0 && handoff.prev_hash !== ordered[index - 1].current_hash));
+  const failedTest = (batch: Batch) => batch.lab_tests.some((test) => test.test_status === 'FAIL');
+  const chainIssue = (batch: Batch) => batch.batch_handoffs.length === 0;
   const visibleBatches = batches.filter((batch) => {
-    const matchesSearch = `${batch.batch_code} ${batch.crop_type} ${batch.farm_location}`.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch = `${batch.batch_code} ${batch.crop_name} ${batch.farm_location}`.toLowerCase().includes(search.toLowerCase());
     const matchesLocation = !locationFilter || batch.farm_location.toLowerCase().includes(locationFilter.toLowerCase());
     const matchesPrimaryFilter = filter === 'all' || (filter === 'recalls' && batch.is_recalled) || (filter === 'failed' && failedTest(batch));
     const matchesLab = labFilter === 'all' || (labFilter === 'pending' && batch.lab_tests.length === 0) || (labFilter === 'passed' && batch.lab_tests.length > 0 && !failedTest(batch)) || (labFilter === 'failed' && failedTest(batch));
@@ -77,7 +76,7 @@ export default function RegulatorDashboard() {
   const selectedBatch = visibleBatches.find((batch) => batch.batch_code === selectedBatchCode) ?? visibleBatches[0];
 
   const exportReport = () => {
-    const rows = visibleBatches.map((batch) => [batch.batch_code, batch.crop_type, batch.farm_location, batch.status, batch.is_recalled ? 'Recalled' : 'Active', batch.lab_tests.length === 0 ? 'Pending' : failedTest(batch) ? 'Failed' : 'Passed'].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','));
+    const rows = visibleBatches.map((batch) => [batch.batch_code, batch.crop_name, batch.farm_location, batch.status, batch.is_recalled ? 'Recalled' : 'Active', batch.lab_tests.length === 0 ? 'Pending' : failedTest(batch) ? 'Failed' : 'Passed'].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','));
     const file = new Blob([['Batch ID,Crop,Farm location,Status,Recall,Lab safety', ...rows].join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(file); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'surakshakhadya-compliance-report.csv'; anchor.click(); URL.revokeObjectURL(url);
   };
@@ -104,12 +103,12 @@ export default function RegulatorDashboard() {
           <CardContent>
             <Table><TableHeader><TableRow><TableHead>Batch</TableHead><TableHead>Source</TableHead><TableHead>Lab safety</TableHead><TableHead>Audit chain</TableHead><TableHead>Status</TableHead><TableHead>Trace</TableHead></TableRow></TableHeader><TableBody>
               {!loading && visibleBatches.length === 0 && <TableRow><TableCell colSpan={6} className="py-10 text-center text-slate-500">No matching batches found.</TableCell></TableRow>}
-              {visibleBatches.map((batch) => <TableRow key={batch.id}><TableCell><p className="font-mono font-semibold">{batch.batch_code}</p><p className="text-xs text-slate-500">{batch.crop_type}</p></TableCell><TableCell>{batch.farm_location}</TableCell><TableCell>{batch.lab_tests.length === 0 ? <Badge variant="outline">Pending</Badge> : failedTest(batch) ? <Badge variant="destructive">Failed</Badge> : <Badge className="bg-emerald-600"><CheckCircle2 className="mr-1" />Passed</Badge>}</TableCell><TableCell>{chainIssue(batch) ? <Badge variant="destructive">Review needed</Badge> : <Badge variant="outline">{batch.handoffs.length} verified stages</Badge>}</TableCell><TableCell><Badge variant={batch.is_recalled ? 'destructive' : 'secondary'}>{batch.is_recalled ? 'RECALLED' : batch.status.replace('_', ' ').toUpperCase()}</Badge></TableCell><TableCell><Link href={`/trace/${encodeURIComponent(batch.batch_code)}`} className="inline-flex items-center text-sm font-medium text-green-700 hover:underline">Open <ExternalLink className="ml-1 h-3 w-3" /></Link></TableCell></TableRow>)}
+              {visibleBatches.map((batch) => <TableRow key={batch.id}><TableCell><p className="font-mono font-semibold">{batch.batch_code}</p><p className="text-xs text-slate-500">{batch.crop_name}</p></TableCell><TableCell>{batch.farm_location}</TableCell><TableCell>{batch.lab_tests.length === 0 ? <Badge variant="outline">Pending</Badge> : failedTest(batch) ? <Badge variant="destructive">Failed</Badge> : <Badge className="bg-emerald-600"><CheckCircle2 className="mr-1" />Passed</Badge>}</TableCell><TableCell>{chainIssue(batch) ? <Badge variant="destructive">Review needed</Badge> : <Badge variant="outline">{batch.batch_handoffs.length} stages</Badge>}</TableCell><TableCell><Badge variant={batch.is_recalled ? 'destructive' : 'secondary'}>{batch.is_recalled ? 'RECALLED' : batch.status.replace('_', ' ').toUpperCase()}</Badge></TableCell><TableCell><Link href={`/trace/${encodeURIComponent(batch.batch_code)}`} className="inline-flex items-center text-sm font-medium text-green-700 hover:underline">Open <ExternalLink className="ml-1 h-3 w-3" /></Link></TableCell></TableRow>)}
             </TableBody></Table>
           </CardContent>
         </Card>
 
-        {selectedBatch && <Card className="portal-surface"><CardHeader><CardTitle>Batch detail: {selectedBatch.batch_code}</CardTitle><p className="text-sm text-slate-600">Immutable handoffs are displayed for review only; past ledger records cannot be edited here.</p></CardHeader><CardContent className="grid gap-6 lg:grid-cols-2"><div><h3 className="mb-3 font-semibold text-slate-900">Trace timeline</h3><div className="space-y-3">{[...selectedBatch.handoffs].sort((a, b) => a.created_at.localeCompare(b.created_at)).map((handoff, index) => <div key={`${handoff.current_hash}-${index}`} className="rounded-lg border border-slate-100 bg-slate-50 p-3"><p className="font-medium capitalize text-slate-900">{handoff.stage} · {handoff.location ?? 'Location not recorded'}</p><p className="mt-1 text-xs text-slate-500">{new Date(handoff.created_at).toLocaleString()}</p>{handoff.notes && <p className="mt-2 text-sm text-slate-600">{handoff.notes}</p>}</div>)}</div></div><div><h3 className="mb-3 font-semibold text-slate-900">Residue testing & downstream review</h3><p className="mb-3 text-sm text-slate-600">Farm: {selectedBatch.farm_location}. Downstream retail locations: {selectedBatch.handoffs.filter((handoff) => handoff.stage === 'retail').map((handoff) => handoff.location).filter(Boolean).join(', ') || 'none recorded'}.</p><div className="space-y-3">{selectedBatch.lab_tests.length === 0 ? <p className="text-sm text-slate-500">No lab test is attached yet.</p> : selectedBatch.lab_tests.map((test, index) => <div key={`${test.lab_name}-${index}`} className="rounded-lg border border-green-100 p-3 text-sm"><p className="font-medium text-slate-900">{test.lab_name} · {test.passed ? 'Passed' : 'Failed'}</p><p className="mt-1 text-slate-600">{test.residue_level_ppm} ppm / limit {test.max_permissible_limit_ppm} ppm</p>{test.report_url && <a href={test.report_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-green-700 hover:underline">Open certificate <ExternalLink className="ml-1 h-3 w-3" /></a>}</div>)}</div></div></CardContent></Card>}
+        {selectedBatch && <Card className="portal-surface"><CardHeader><CardTitle>Batch detail: {selectedBatch.batch_code}</CardTitle><p className="text-sm text-slate-600">Handoffs and lab results are read-only compliance records.</p></CardHeader><CardContent className="grid gap-6 lg:grid-cols-2"><div><h3 className="mb-3 font-semibold text-slate-900">Trace timeline</h3><div className="space-y-3">{[...selectedBatch.batch_handoffs].sort((a, b) => a.created_at.localeCompare(b.created_at)).map((handoff, index) => <div key={`${handoff.stage}-${index}`} className="rounded-lg border border-slate-100 bg-slate-50 p-3"><p className="font-medium capitalize text-slate-900">{handoff.stage} · {handoff.assigned_retailer_name ?? 'Supply-chain update'}</p><p className="mt-1 text-xs text-slate-500">{new Date(handoff.created_at).toLocaleString()}</p>{handoff.notes && <p className="mt-2 text-sm text-slate-600">{handoff.notes}</p>}</div>)}</div></div><div><h3 className="mb-3 font-semibold text-slate-900">Residue testing</h3><div className="space-y-3">{selectedBatch.lab_tests.length === 0 ? <p className="text-sm text-slate-500">No lab test is attached yet.</p> : selectedBatch.lab_tests.map((test, index) => <div key={`${test.lab_name}-${index}`} className="rounded-lg border border-green-100 p-3 text-sm"><p className="font-medium text-slate-900">{test.lab_name} · {test.test_status}</p><p className="mt-1 text-slate-600">{test.residue_ppm} ppm / limit {test.max_limit_ppm} ppm</p>{test.certificate_url && <a href={test.certificate_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-green-700 hover:underline">Open certificate <ExternalLink className="ml-1 h-3 w-3" /></a>}</div>)}</div></div></CardContent></Card>}
       </div>
     </PortalShell>
   );

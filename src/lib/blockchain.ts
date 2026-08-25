@@ -18,20 +18,8 @@ export function formatHash(hash: string): string {
 }
 
 export async function getAuthenticatedActor() {
-  const { supabase } = await import('@/lib/supabase');
+  const { supabase } = await import('@/lib/supabaseClient');
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) throw new Error('Please sign in before recording a supply-chain update.');
   return user;
-}
-
-export async function getPreviousHash(batchId: string): Promise<string> {
-  const { supabase } = await import('@/lib/supabase');
-  const { data } = await supabase
-    .from('handoffs')
-    .select('current_hash')
-    .eq('batch_id', batchId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data?.current_hash ?? '0';
 }

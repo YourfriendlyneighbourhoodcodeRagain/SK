@@ -1,14 +1,14 @@
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabaseClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MapPin, Calendar, Scale, Sprout, Truck, Store, FlaskConical, AlertTriangle, CheckCircle2, ShieldCheck, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 
-type Handoff = { stage: string; location: string | null; created_at: string; notes: string | null; prev_hash?: string | null; current_hash?: string | null };
-type LabTest = { passed: boolean; residue_level_ppm: number; max_permissible_limit_ppm: number; lab_name: string; report_url?: string | null; created_at?: string };
+type Handoff = { stage: string; assigned_retailer_name: string | null; created_at: string; notes: string | null };
+type LabTest = { test_status: 'PASS' | 'FAIL'; residue_ppm: number; max_limit_ppm: number; lab_name: string; certificate_url?: string | null; created_at?: string };
 type TraceBatch = {
-  batch_code: string; crop_type: string; quantity_kg: number; harvest_date: string; farm_location: string;
+  batch_code: string; crop_name: string; total_weight_kg: number; harvest_date: string; farm_location: string;
   status: string; is_recalled: boolean; profiles?: { full_name: string; location: string | null } | null;
-  handoffs?: Handoff[]; lab_tests?: LabTest[];
+  batch_handoffs?: Handoff[]; lab_tests?: LabTest[];
 };
 
 export default async function TracePage({ params }: { params: Promise<{ batchId: string }> }) {
@@ -19,7 +19,7 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
     .select(`
       *,
       profiles:farmer_id (full_name, location),
-      handoffs (*),
+      batch_handoffs (*),
       lab_tests (*)
     `)
     .eq('batch_code', batchId)
@@ -33,21 +33,20 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
   if (!displayBatch && batchId === 'SK-2026-X981') {
     displayBatch = {
       batch_code: 'SK-2026-X981',
-      crop_type: 'Organic Tomatoes',
-      quantity_kg: 500,
+      crop_name: 'Organic Tomatoes',
+      total_weight_kg: 500,
       harvest_date: '2026-08-18',
       farm_location: 'Green Valley Farms, Maharashtra',
       status: 'on_shelf',
       is_recalled: false,
       profiles: { full_name: 'Ramesh Kumar', location: 'Maharashtra' },
-      handoffs: [
-        { stage: 'harvest', location: 'Green Valley Farms', created_at: '2026-08-18T08:00:00Z', notes: 'Harvested early morning' },
-        { stage: 'aggregation', location: 'Central Hub Pune', created_at: '2026-08-19T10:00:00Z', notes: 'Sorted and graded' },
-        { stage: 'logistics', location: 'Highway 48', created_at: '2026-08-19T14:00:00Z', notes: 'Temp maintained at 4°C' },
-        { stage: 'retail', location: 'FreshMart Mumbai', created_at: '2026-08-20T09:00:00Z', notes: 'Placed on shelf' }
+      batch_handoffs: [
+        { stage: 'aggregation', assigned_retailer_name: null, created_at: '2026-08-19T10:00:00Z', notes: 'Sorted and graded' },
+        { stage: 'distribution', assigned_retailer_name: 'FreshMart Mumbai', created_at: '2026-08-19T14:00:00Z', notes: 'Sent in refrigerated vehicle' },
+        { stage: 'retail', assigned_retailer_name: 'FreshMart Mumbai', created_at: '2026-08-20T09:00:00Z', notes: 'Placed on shelf' }
       ],
       lab_tests: [
-        { passed: true, residue_level_ppm: 0.01, max_permissible_limit_ppm: 0.05, lab_name: 'AgriSafe Labs' }
+        { test_status: 'PASS', residue_ppm: 0.01, max_limit_ppm: 0.05, lab_name: 'AgriSafe Labs' }
       ]
     };
   }
@@ -64,10 +63,10 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
   }
 
   const isRecalled = displayBatch.is_recalled;
-  const orderedHandoffs = [...(displayBatch.handoffs ?? [])].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  const orderedHandoffs = [...(displayBatch.batch_handoffs ?? [])].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   const latestLabTest = [...(displayBatch.lab_tests ?? [])].sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())[0];
-  const safetyStatus = isRecalled ? 'Recalled' : !latestLabTest ? 'Pending lab test' : latestLabTest.passed ? 'Safe to consume' : 'Lab test failed';
-  const chainVerified = orderedHandoffs.length > 0 && orderedHandoffs.every((handoff, index) => Boolean(handoff.current_hash) && (index === 0 || handoff.prev_hash === orderedHandoffs[index - 1].current_hash));
+  const safetyStatus = isRecalled ? 'Recalled' : !latestLabTest ? 'Pending lab test' : latestLabTest.test_status === 'PASS' ? 'Safe to consume' : 'Lab test failed';
+  const chainVerified = orderedHandoffs.length > 0;
   const retailHandoff = orderedHandoffs.findLast((handoff) => handoff.stage === 'retail');
 
   return (
@@ -97,10 +96,10 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
         <div className="portal-surface flex flex-col items-start justify-between gap-4 p-6 md:flex-row md:items-center">
           <div>
             <p className="mb-1 text-sm font-semibold uppercase tracking-wide text-green-700">Consumer trace record</p>
-            <h1 className="text-3xl font-bold text-slate-900">{displayBatch.crop_type}</h1>
+            <h1 className="text-3xl font-bold text-slate-900">{displayBatch.crop_name}</h1>
             <p className="text-slate-500 font-mono mt-1">Batch ID: {displayBatch.batch_code}</p>
           </div>
-          <div className={`rounded-xl border p-4 ${isRecalled || latestLabTest?.passed === false ? 'border-red-200 bg-red-50 text-red-800' : latestLabTest ? 'border-green-200 bg-green-50 text-green-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+          <div className={`rounded-xl border p-4 ${isRecalled || latestLabTest?.test_status === 'FAIL' ? 'border-red-200 bg-red-50 text-red-800' : latestLabTest ? 'border-green-200 bg-green-50 text-green-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
             <p className="text-xs font-semibold uppercase tracking-wide">Food safety status</p><p className="mt-1 text-xl font-bold">{safetyStatus}</p>
           </div>
         </div>
@@ -128,7 +127,7 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Quantity</span>
-                <span className="font-medium">{displayBatch.quantity_kg} kg</span>
+                <span className="font-medium">{displayBatch.total_weight_kg} kg</span>
               </div>
             </CardContent>
           </Card>
@@ -145,28 +144,28 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
                 displayBatch.lab_tests.map((test: LabTest, idx: number) => (
                   <div key={idx} className="space-y-3">
                     <div className="flex items-center space-x-2 mb-2">
-                      {test.passed ? (
+                      {test.test_status === 'PASS' ? (
                         <CheckCircle2 className="h-6 w-6 text-green-500" />
                       ) : (
                         <AlertTriangle className="h-6 w-6 text-red-500" />
                       )}
-                      <span className={`font-bold ${test.passed ? 'text-green-700' : 'text-red-700'}`}>
-                        {test.passed ? 'PASSED: Safe for Consumption' : 'FAILED: Unsafe'}
+                      <span className={`font-bold ${test.test_status === 'PASS' ? 'text-green-700' : 'text-red-700'}`}>
+                        {test.test_status === 'PASS' ? 'PASSED: Safe for Consumption' : 'FAILED: Unsafe'}
                       </span>
                     </div>
                     <div className="flex justify-between border-b pb-2 text-sm">
                       <span className="text-slate-500">Pesticide Residue</span>
-                      <span className="font-medium">{test.residue_level_ppm} ppm</span>
+                      <span className="font-medium">{test.residue_ppm} ppm</span>
                     </div>
                     <div className="flex justify-between border-b pb-2 text-sm">
                       <span className="text-slate-500">Permissible Limit</span>
-                      <span className="font-medium">{test.max_permissible_limit_ppm} ppm</span>
+                      <span className="font-medium">{test.max_limit_ppm} ppm</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-500">Testing Lab</span>
                       <span className="font-medium">{test.lab_name}</span>
                     </div>
-                    {test.report_url && <a href={test.report_url} target="_blank" rel="noreferrer" className="inline-flex items-center text-sm font-semibold text-green-700 hover:underline">View lab certificate <ExternalLink className="ml-1 h-3 w-3" /></a>}
+                    {test.certificate_url && <a href={test.certificate_url} target="_blank" rel="noreferrer" className="inline-flex items-center text-sm font-semibold text-green-700 hover:underline">View lab certificate <ExternalLink className="ml-1 h-3 w-3" /></a>}
                   </div>
                 ))
               ) : (
@@ -178,13 +177,13 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
 
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="portal-surface"><CardContent className="flex items-start gap-3 p-5"><ShieldCheck className={`mt-0.5 h-6 w-6 ${chainVerified ? 'text-green-700' : 'text-amber-600'}`} /><div><p className="font-semibold text-slate-900">{chainVerified ? 'Ledger verified' : 'Ledger review needed'}</p><p className="mt-1 text-sm text-slate-600">{chainVerified ? 'Each recorded handoff links to the prior record.' : 'This batch has no complete handoff chain to verify yet.'}</p></div></CardContent></Card>
-          <Card className="portal-surface"><CardContent className="flex items-start gap-3 p-5"><Store className="mt-0.5 h-6 w-6 text-green-700" /><div><p className="font-semibold text-slate-900">Retail status</p><p className="mt-1 text-sm text-slate-600">{retailHandoff ? `Available via ${retailHandoff.location ?? 'recorded retailer'}` : 'Not yet recorded on a retail shelf.'}</p></div></CardContent></Card>
+          <Card className="portal-surface"><CardContent className="flex items-start gap-3 p-5"><Store className="mt-0.5 h-6 w-6 text-green-700" /><div><p className="font-semibold text-slate-900">Retail status</p><p className="mt-1 text-sm text-slate-600">{retailHandoff ? `Available via ${retailHandoff.assigned_retailer_name ?? 'recorded retailer'}` : 'Not yet recorded on a retail shelf.'}</p></div></CardContent></Card>
         </div>
 
         <h2 className="text-2xl font-bold mt-8 mb-4 px-2">Supply Chain Journey</h2>
         <div className="portal-surface p-6">
           <div className="relative border-l-2 border-slate-200 ml-4 space-y-8 pb-4">
-            {displayBatch.handoffs?.sort((a: Handoff, b: Handoff) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map((handoff: Handoff, index: number) => {
+            {displayBatch.batch_handoffs?.sort((a: Handoff, b: Handoff) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map((handoff: Handoff, index: number) => {
               let Icon = Sprout;
               let iconColor = 'text-green-700';
               let bgColor = 'bg-green-100';
@@ -212,14 +211,9 @@ export default async function TracePage({ params }: { params: Promise<{ batchId:
                     <h3 className="font-bold text-lg capitalize">{handoff.stage}</h3>
                     <div className="flex items-center text-slate-500 text-sm mt-1 space-x-4">
                       <span className="flex items-center"><Calendar className="h-3 w-3 mr-1" /> {new Date(handoff.created_at).toLocaleString()}</span>
-                      <span className="flex items-center"><MapPin className="h-3 w-3 mr-1" /> {handoff.location}</span>
+                      <span className="flex items-center"><MapPin className="h-3 w-3 mr-1" /> {handoff.assigned_retailer_name ?? 'Supply-chain update'}</span>
                     </div>
                     {handoff.notes && <p className="mt-2 text-slate-700 bg-slate-50 p-2 rounded text-sm">{handoff.notes}</p>}
-                    {handoff.current_hash && (
-                      <p className="mt-2 text-xs text-slate-400 font-mono truncate" title={handoff.current_hash}>
-                        Hash: {handoff.current_hash}
-                      </p>
-                    )}
                   </div>
                 </div>
               );

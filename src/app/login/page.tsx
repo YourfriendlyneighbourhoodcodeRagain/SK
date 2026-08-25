@@ -3,7 +3,7 @@
 import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Leaf, Lock, Mail } from 'lucide-react';
+import { ArrowRight, Leaf } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,14 +13,32 @@ import { PublicShell } from '@/components/portal-shell';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
-  const [error, setError] = useState(''); const [isSubmitting, setIsSubmitting] = useState(false);
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError(''); setIsSubmitting(true);
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    setIsSubmitting(false);
-    if (signInError) { setError(signInError.message === 'Invalid login credentials' ? 'Invalid email or password. Please try again.' : signInError.message); return; }
-    router.replace('/dashboard'); router.refresh();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [uiError, setUiError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setUiError('');
+    setLoading(true);
+    const formData = { email, passwordLength: password.length };
+    console.log('Submitting to Supabase...', formData);
+    try {
+      console.log('Calling supabase.auth.signInWithPassword');
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      console.log('Supabase sign-in response:', { data, error });
+      if (error) { setUiError(error.message); return; }
+      if (!data.session || !data.user) { setUiError('Sign-in succeeded but no active session was created. Confirm your email, then try again.'); return; }
+      console.log('Sign-in successful:', data.user);
+      router.push('/dashboard');
+      router.refresh();
+    } catch (caughtError) {
+      console.error('Supabase sign-in exception:', caughtError);
+      setUiError(caughtError instanceof Error ? caughtError.message : 'Unable to sign in. Please try again.');
+    } finally { setLoading(false); }
   }
-  return <PublicShell><Card className="portal-surface w-full max-w-md"><CardHeader className="text-center"><Link href="/" className="mx-auto flex items-center gap-2 text-green-700"><Leaf /><span className="text-xl font-bold">SurakshaKhadya</span></Link><CardTitle className="pt-4 text-2xl">Sign in</CardTitle><CardDescription>Access your food safety workspace.</CardDescription></CardHeader><CardContent><form onSubmit={handleSubmit} className="space-y-5">{error && <p role="alert" className="portal-status-error p-3 text-sm">{error}</p>}<div className="space-y-2"><Label htmlFor="email">Email</Label><div className="relative"><Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><Input id="email" type="email" autoComplete="email" className="portal-field pl-9" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></div><div className="space-y-2"><Label htmlFor="password">Password</Label><div className="relative"><Lock className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><Input id="password" type="password" autoComplete="current-password" className="portal-field pl-9" value={password} onChange={(event) => setPassword(event.target.value)} required /></div></div><Button type="submit" disabled={isSubmitting} className="portal-action w-full py-6 text-lg">{isSubmitting ? 'Signing in…' : <>Sign in <ArrowRight className="ml-2" /></>}</Button></form><p className="mt-6 text-center text-sm text-slate-600">New to SurakshaKhadya? <Link href="/register" className="font-semibold text-green-700 hover:underline">Create an account</Link></p></CardContent></Card></PublicShell>;
+
+  return <PublicShell><Card className="portal-surface w-full max-w-md"><CardHeader className="text-center"><Link href="/" className="mx-auto flex items-center gap-2 text-green-700"><Leaf /><span className="text-xl font-bold">SurakshaKhadya</span></Link><CardTitle className="pt-4 text-2xl">Sign in</CardTitle><CardDescription>Access your food safety workspace.</CardDescription></CardHeader><CardContent><form onSubmit={handleSubmit} className="space-y-5">{uiError && <div role="alert" className="rounded-lg border-2 border-red-500 bg-red-100 p-4 font-semibold text-red-900">{uiError}</div>}<div className="space-y-2"><Label htmlFor="email">Email</Label><Input id="email" type="email" autoComplete="email" className="portal-field" value={email} onChange={(event) => setEmail(event.target.value)} required /></div><div className="space-y-2"><Label htmlFor="password">Password</Label><Input id="password" type="password" autoComplete="current-password" className="portal-field" value={password} onChange={(event) => setPassword(event.target.value)} required /></div><Button type="submit" disabled={loading} className="portal-action w-full py-6 text-lg">{loading ? 'Signing in…' : <>Sign in <ArrowRight className="ml-2" /></>}</Button></form><p className="mt-6 text-center text-sm text-slate-600">New to SurakshaKhadya? <Link href="/register" className="font-semibold text-green-700 hover:underline">Create an account</Link></p></CardContent></Card></PublicShell>;
 }
