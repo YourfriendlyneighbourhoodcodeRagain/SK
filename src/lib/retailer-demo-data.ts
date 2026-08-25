@@ -1,5 +1,5 @@
 export type DeliveryStatus = 'WAITING' | 'RECEIVED' | 'ISSUE REPORTED';
-export type StockStatus = 'AVAILABLE' | 'LOW STOCK' | 'OUT OF STOCK';
+export type StockStatus = 'AVAILABLE' | 'LOW STOCK' | 'OUT OF STOCK' | 'BLOCKED';
 
 export type RetailerDelivery = {
   id: string;
