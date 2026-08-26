@@ -6,10 +6,12 @@ import { Search, Leaf, ShieldCheck, QrCode } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { QRScannerModal } from '@/components/QRScannerModal';
 import Link from 'next/link';
 
 export default function Home() {
   const [batchId, setBatchId] = useState('');
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const router = useRouter();
 
   const handleTrace = (e: React.FormEvent) => {
@@ -77,9 +79,8 @@ export default function Home() {
                 <Button type="submit" size="lg" className="py-6 text-lg bg-green-600 hover:bg-green-700">
                   Trace Batch
                 </Button>
-                <Button type="button" variant="outline" size="lg" className="py-6 text-lg border-green-200 text-green-700 hover:bg-green-50">
-                  <QrCode className="mr-2 h-5 w-5" />
-                  Scan QR
+                <Button type="button" variant="outline" size="lg" onClick={() => setIsScannerOpen(true)} className="rounded-xl bg-emerald-600 py-6 text-lg font-bold text-white shadow hover:bg-emerald-700">
+                  📷 Scan Produce QR Code
                 </Button>
               </form>
             </CardContent>
@@ -110,6 +111,8 @@ export default function Home() {
           </div>
         </div>
       </main>
+
+      {isScannerOpen && <QRScannerModal open={isScannerOpen} onClose={() => setIsScannerOpen(false)} />}
 
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 py-8 text-center">

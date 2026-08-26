@@ -61,3 +61,10 @@ CREATE TABLE public.lab_tests (
   certificate_url TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- QR traceability fields used by CreateBatchForm and the public trace route.
+ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS qr_code_url TEXT;
+ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS pesticide_status TEXT NOT NULL DEFAULT 'PASS';
+ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS data_hash TEXT;
+ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS polygon_tx_hash TEXT;
+ALTER TABLE public.batches ALTER COLUMN status SET DEFAULT 'SAFE';
