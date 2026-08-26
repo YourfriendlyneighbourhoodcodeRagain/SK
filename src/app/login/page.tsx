@@ -23,19 +23,14 @@ export default function LoginPage() {
     e.stopPropagation();
     setUiError('');
     setLoading(true);
-    const formData = { email, passwordLength: password.length };
-    console.log('Submitting to Supabase...', formData);
+    const normalizedEmail = email.trim().toLowerCase();
     try {
-      console.log('Calling supabase.auth.signInWithPassword');
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      console.log('Supabase sign-in response:', { data, error });
+      const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
       if (error) { setUiError(error.message); return; }
       if (!data.session || !data.user) { setUiError('Sign-in succeeded but no active session was created. Confirm your email, then try again.'); return; }
-      console.log('Sign-in successful:', data.user);
-      router.push('/dashboard');
+      router.replace('/dashboard');
       router.refresh();
     } catch (caughtError) {
-      console.error('Supabase sign-in exception:', caughtError);
       setUiError(caughtError instanceof Error ? caughtError.message : 'Unable to sign in. Please try again.');
     } finally { setLoading(false); }
   }

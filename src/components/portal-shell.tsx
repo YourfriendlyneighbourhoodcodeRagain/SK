@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Leaf, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { SignOutButton } from '@/components/SignOutButton';
 
 type PortalShellProps = {
   title: string;
@@ -8,24 +9,28 @@ type PortalShellProps = {
   icon: LucideIcon;
   children: ReactNode;
   contentClassName?: string;
+  showWorkspaceLink?: boolean;
 };
 
 export const portalSurfaceClass = 'rounded-xl border border-green-100 bg-white shadow-lg';
 export const portalInputClass = 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:border-green-500 focus-visible:ring-green-200';
 export const portalPrimaryButtonClass = 'bg-green-700 font-semibold text-white hover:bg-green-800';
 
-export function PortalShell({ title, description, icon: Icon, children, contentClassName = '' }: PortalShellProps) {
+export function PortalShell({ title, description, icon: Icon, children, contentClassName = '', showWorkspaceLink = true }: PortalShellProps) {
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="flex h-screen min-h-screen flex-col overflow-y-auto bg-slate-50">
       <header className="bg-green-700 p-4 text-white shadow-md">
         <div className="container mx-auto flex max-w-6xl items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-90" aria-label="SurakshaKhadya home">
             <Leaf className="h-6 w-6" />
             <span className="text-xl font-bold">SurakshaKhadya</span>
           </Link>
-          <Link href="/dashboard" className="rounded-md px-3 py-2 text-sm font-medium hover:bg-green-800">
-            My workspace
-          </Link>
+          <div className="flex items-center gap-2">
+            {showWorkspaceLink && <Link href="/dashboard" className="rounded-md px-3 py-2 text-sm font-medium hover:bg-green-800">
+              My workspace
+            </Link>}
+            <SignOutButton />
+          </div>
         </div>
       </header>
 
