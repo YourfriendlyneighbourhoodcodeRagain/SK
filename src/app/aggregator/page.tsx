@@ -120,11 +120,13 @@ export default function AggregatorDashboard() {
     setStatus(null); setLoading('sellSubmit');
     try {
       const user = await getAuthenticatedActor();
-      const { data: previousSales } = await supabase.from('batch_handoffs').select('quantity_kg').eq('batch_id', sellBatch.id).eq('stage', 'distribution').not('quantity_kg', 'is', null);
+      const { data: batch, error: batchError } = await supabase.from('batches').select('id').eq('batch_code', sellBatch.batch_code).single();
+      if (batchError || !batch) throw new Error('Batch not found. Check the batch ID and try again.');
+      const { data: previousSales } = await supabase.from('batch_handoffs').select('quantity_kg').eq('batch_id', batch.id).eq('stage', 'distribution').not('quantity_kg', 'is', null);
       const soldQuantity = (previousSales ?? []).reduce((total, sale) => total + Number(sale.quantity_kg), 0);
-      const { error: updateError } = await supabase.from('batches').update({ status: soldQuantity + quantity >= sellBatch.total_weight_kg ? 'in_transit' : 'received_by_aggregator' }).eq('id', sellBatch.id);
+      const { error: updateError } = await supabase.from('batches').update({ status: soldQuantity + quantity >= sellBatch.total_weight_kg ? 'in_transit' : 'received_by_aggregator' }).eq('id', batch.id);
       if (updateError) throw updateError;
-      const { error: handoffError } = await supabase.from('batch_handoffs').insert([{ batch_id: sellBatch.id, handler_id: user.id, stage: 'distribution', assigned_distributor_name: recipient.full_name, quantity_kg: quantity, notes: saleNotes.trim() || `Sold ${quantity} kg to ${recipient.full_name}` }]);
+      const { error: handoffError } = await supabase.from('batch_handoffs').insert([{ batch_id: batch.id, handler_id: user.id, stage: 'distribution', assigned_distributor_name: recipient.full_name, quantity_kg: quantity, notes: saleNotes.trim() || `Sold ${quantity} kg to ${recipient.full_name}` }]);
       if (handoffError) throw handoffError;
       setStatus({ type: 'success', text: `${quantity} kg of ${sellBatch.batch_code} was sold to ${recipient.full_name}.` });
       setSellBatch(null); setSellCode(''); setSelectedDistributor(null); setDistributorChoice(''); setSaleQuantity(''); setSaleNotes('');

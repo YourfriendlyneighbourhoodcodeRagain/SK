@@ -5,7 +5,9 @@ import { recordBatchOnPolygon } from '@/lib/blockchain';
 import { supabase } from '@/lib/supabaseClient';
 
 export type BatchFormData = { farmerId: string; cropName: string; totalWeightKg: number; harvestDate: string; farmLocation: string };
-export type BatchRecord = { id: string; farmer_id: string; batch_code: string; crop_name: string; total_weight_kg: number; harvest_date: string; farm_location: string; qr_code_url: string; status: string; pesticide_status: string; data_hash: string | null; polygon_tx_hash: string | null; created_at: string; lab_tests?: { test_status: string }[]; batch_handoffs?: { stage: string; notes: string | null; created_at: string }[] };
+export type BatchRecord = { id: string; farmer_id: string; batch_code: string; crop_name: string; total_weight_kg: number; harvest_date: string; farm_location: string; qr_code_url: string; status: string; pesticide_status: string; data_hash: string | null; polygon_tx_hash: string | null; created_at: string; lab_tests?: { test_status: string }[] };
+export type BatchHandoff = { stage: string; assigned_distributor_name: string | null; quantity_kg: number | null; notes: string | null; created_at: string };
+export type BatchTrace = { batch: BatchRecord; handoffs: BatchHandoff[] };
 
 function getConfig() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -25,9 +27,13 @@ export async function createBatch(formData: BatchFormData): Promise<BatchRecord>
   return data as BatchRecord;
 }
 
-export async function getBatchByCode(batchCode: string): Promise<BatchRecord | null> {
+export async function getBatchByCode(batchCode: string): Promise<BatchTrace | null> {
   getConfig();
-  const { data, error } = await supabase.from('batches').select('*, lab_tests(test_status, residue_ppm, max_limit_ppm, certificate_url, created_at), batch_handoffs(stage, notes, created_at)').eq('batch_code', batchCode).maybeSingle();
-  if (error) throw new Error(error.message);
-  return data as BatchRecord | null;
+  const { data: batch, error: batchError } = await supabase.from('batches').select('*, lab_tests(test_status, residue_ppm, max_limit_ppm, certificate_url, created_at)').eq('batch_code', batchCode).maybeSingle();
+  if (batchError) throw new Error(batchError.message);
+  if (!batch) return null;
+
+  const { data: handoffs, error: handoffError } = await supabase.from('batch_handoffs').select('stage, assigned_distributor_name, quantity_kg, notes, created_at').eq('batch_id', batch.id).order('created_at', { ascending: true });
+  if (handoffError) throw new Error(handoffError.message);
+  return { batch: batch as BatchRecord, handoffs: (handoffs ?? []) as BatchHandoff[] };
 }
