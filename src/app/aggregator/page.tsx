@@ -100,8 +100,13 @@ export default function AggregatorDashboard() {
     if (labBatch.is_recalled) { setLookupError('This batch is recalled and cannot receive a new lab test.'); return; }
     setStatus(null); setLoading('labSubmit');
     try {
+      const residue = Number(residueLevel);
+      const limit = Number(maxLimit);
+      if (!labName.trim() || !Number.isFinite(residue) || !Number.isFinite(limit) || limit < 0 || residue < 0) throw new Error('Enter valid lab name, residue level, and permitted limit.');
       const user = await getAuthenticatedActor();
-      const { error } = await supabase.from('lab_tests').insert([{ batch_id: labBatch.id, tester_id: user.id, lab_name: labName, residue_ppm: parseFloat(residueLevel), max_limit_ppm: parseFloat(maxLimit), test_status: passed ? 'PASS' : 'FAIL', certificate_url: reportUrl || null }]);
+      const failedByValue = residue > limit;
+      const resultStatus = failedByValue ? 'FAIL' : passed ? 'PASS' : 'FAIL';
+      const { error } = await supabase.from('lab_tests').insert([{ batch_id: labBatch.id, tester_id: user.id, lab_name: labName.trim(), residue_ppm: residue, max_limit_ppm: limit, test_status: resultStatus, certificate_url: reportUrl || null }]);
       if (error) throw error;
       setStatus({ type: 'success', text: `Lab results were attached to ${labBatch.batch_code}.` });
       setLabBatch(null); setLabCode(''); setLabName(''); setResidueLevel(''); setMaxLimit(''); setReportUrl(''); setPassed(true);

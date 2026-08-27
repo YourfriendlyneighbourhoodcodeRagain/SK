@@ -20,7 +20,7 @@ export function QRCodeModal({ batchId, open, onClose }: { batchId: string | null
 				<div className="mx-auto w-fit rounded-lg bg-white p-3 shadow-sm"><QRCodeSVG value={traceUrl} size={208} bgColor="#ffffff" fgColor="#123524" includeMargin /></div>
 				<p className="mt-4 font-mono text-sm font-bold text-slate-800">{batchId}</p>
 			</div>
-			<Button render={<Link href={`/trace/${encodeURIComponent(batchId)}`} />} className="portal-action w-full">OPEN TRACEABILITY</Button>
+			<Button nativeButton={false} render={<Link href={`/trace/${encodeURIComponent(batchId)}`} />} className="portal-action w-full">OPEN TRACEABILITY</Button>
 		</DialogContent>
 	</Dialog>;
 }

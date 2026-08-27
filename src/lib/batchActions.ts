@@ -1,7 +1,7 @@
 'use server';
 
 import { createHash } from 'crypto';
-import { recordBatchOnPolygon } from '@/lib/blockchain';
+import { anchorHashOnPolygon } from '@/lib/polygon';
 import { supabase } from '@/lib/supabaseClient';
 
 export type BatchFormData = { farmerId: string; cropName: string; totalWeightKg: number; harvestDate: string; farmLocation: string };
@@ -21,7 +21,7 @@ export async function createBatch(formData: BatchFormData): Promise<BatchRecord>
   const traceUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/trace/${batchCode}`;
   const qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(traceUrl)}&size=300`;
   const dataHash = createHash('sha256').update(JSON.stringify({ ...formData, batchCode })).digest('hex');
-  const polygonTxHash = await recordBatchOnPolygon(dataHash).catch(() => null);
+  const polygonTxHash = process.env.POLYGON_PRIVATE_KEY ? await anchorHashOnPolygon(dataHash) : null;
   const { data, error } = await supabase.from('batches').insert({ farmer_id: formData.farmerId, batch_code: batchCode, crop_name: formData.cropName, total_weight_kg: formData.totalWeightKg, harvest_date: formData.harvestDate, farm_location: formData.farmLocation, qr_code_url: qrCodeUrl, data_hash: dataHash, polygon_tx_hash: polygonTxHash }).select().single();
   if (error) throw new Error(error.message);
   return data as BatchRecord;

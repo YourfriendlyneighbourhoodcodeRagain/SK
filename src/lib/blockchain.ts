@@ -36,13 +36,19 @@ export function formatHash(hash: string): string {
   return `${hash.substring(0, 8)}...${hash.substring(hash.length - 8)}`;
 }
 
-/**
- * Integration point for a future Polygon signer. Returning null keeps batch
- * creation fully functional when no blockchain wallet/RPC is configured.
- */
-export async function recordBatchOnPolygon(_dataHash: string): Promise<string | null> {
-  void _dataHash;
-  return null;
+/** Client-side handoffs are anchored through the protected Next.js API route. */
+export async function recordBatchOnPolygon(dataHash: string): Promise<string | null> {
+  const response = await fetch('/api/blockchain/anchor', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ handoffId: null, dataHash }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { error?: string } | null;
+    throw new Error(body?.error || 'Could not anchor this hash on Polygon.');
+  }
+  const body = await response.json() as { txHash?: string | null };
+  return body.txHash ?? null;
 }
 
 export async function getAuthenticatedActor() {
@@ -67,7 +73,33 @@ export async function recordHandoff(input: RecordHandoffInput) {
     p_quantity_kg: input.quantityKg ?? null,
   });
   if (error) throw new Error(error.message);
-  return Array.isArray(data) ? data[0] : data;
+  const handoff = Array.isArray(data) ? data[0] : data;
+  if (handoff?.id && handoff?.current_hash && process.env.NEXT_PUBLIC_POLYGON_ANCHORING !== 'disabled') {
+    try {
+      const response = await fetch('/api/blockchain/anchor', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ handoffId: handoff.id, dataHash: handoff.current_hash }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error || 'Could not anchor the handoff hash on Polygon.');
+      }
+      const body = await response.json() as { txHash?: string | null };
+      if (body.txHash) {
+        const { error: anchorError } = await supabase.from('handoff_blockchain_anchors').insert({
+          handoff_id: handoff.id,
+          tx_hash: body.txHash,
+          committed_hash: handoff.current_hash,
+          network: 'polygon-amoy',
+        });
+        if (anchorError) throw new Error(anchorError.message);
+      }
+    } catch (anchorError) {
+      throw anchorError instanceof Error ? anchorError : new Error('Blockchain anchoring failed.');
+    }
+  }
+  return handoff;
 }
 
 /** Verify only modern (ledger_version = 1) records; legacy rows remain explicitly unverified. */

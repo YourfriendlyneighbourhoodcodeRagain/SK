@@ -47,5 +47,5 @@ function RoleActions({ role }: { role: Role }) {
 }
 
 function ActionCard({ title, description, href, icon, color, button }: { title: string; description: string; href: string; icon: React.ReactNode; color: string; button: string }) {
-  return <Card className="border border-green-100 shadow-lg"><CardHeader><div className="mb-2 text-green-700">{icon}</div><CardTitle className="text-slate-900">{title}</CardTitle><CardDescription>{description}</CardDescription></CardHeader><CardContent><Button render={<Link href={href} />} className={`w-full py-4 text-lg font-bold ${color}`}>{button}</Button></CardContent></Card>;
+  return <Card className="border border-green-100 shadow-lg"><CardHeader><div className="mb-2 text-green-700">{icon}</div><CardTitle className="text-slate-900">{title}</CardTitle><CardDescription>{description}</CardDescription></CardHeader><CardContent><Button nativeButton={false} render={<Link href={href} />} className={`w-full py-4 text-lg font-bold ${color}`}>{button}</Button></CardContent></Card>;
 }
