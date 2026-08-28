@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Leaf, type LucideIcon } from 'lucide-react';
+import { History, Leaf, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { SignOutButton } from '@/components/SignOutButton';
 
@@ -10,13 +10,14 @@ type PortalShellProps = {
   children: ReactNode;
   contentClassName?: string;
   showWorkspaceLink?: boolean;
+  onHistoryClick?: () => void;
 };
 
 export const portalSurfaceClass = 'rounded-xl border border-green-100 bg-white shadow-lg';
 export const portalInputClass = 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:border-green-500 focus-visible:ring-green-200';
 export const portalPrimaryButtonClass = 'bg-green-700 font-semibold text-white hover:bg-green-800';
 
-export function PortalShell({ title, description, icon: Icon, children, contentClassName = '', showWorkspaceLink = true }: PortalShellProps) {
+export function PortalShell({ title, description, icon: Icon, children, contentClassName = '', showWorkspaceLink = true, onHistoryClick }: PortalShellProps) {
   return (
     <div className="flex h-screen min-h-screen flex-col overflow-y-auto bg-slate-50">
       <header className="bg-green-700 p-4 text-white shadow-md">
@@ -26,6 +27,10 @@ export function PortalShell({ title, description, icon: Icon, children, contentC
             <span className="text-xl font-bold">SurakshaKhadya</span>
           </Link>
           <div className="flex items-center gap-2">
+            {onHistoryClick && <button onClick={onHistoryClick} className="flex items-center gap-1 rounded-md px-3 py-2 text-sm font-medium hover:bg-green-800">
+              <History className="h-4 w-4" />
+              History
+            </button>}
             {showWorkspaceLink && <Link href="/dashboard" className="rounded-md px-3 py-2 text-sm font-medium hover:bg-green-800">
               My workspace
             </Link>}
@@ -35,11 +40,13 @@ export function PortalShell({ title, description, icon: Icon, children, contentC
       </header>
 
       <main className={`container mx-auto w-full max-w-6xl flex-1 p-4 py-8 md:px-6 ${contentClassName}`}>
-        <div className="mb-8 flex items-start gap-3">
-          <div className="rounded-xl bg-green-100 p-3 text-green-700"><Icon className="h-7 w-7" /></div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
-            <p className="mt-1 text-slate-600">{description}</p>
+        <div className="mb-8 flex items-start justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-green-100 p-3 text-green-700"><Icon className="h-7 w-7" /></div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
+              <p className="mt-1 text-slate-600">{description}</p>
+            </div>
           </div>
         </div>
         {children}

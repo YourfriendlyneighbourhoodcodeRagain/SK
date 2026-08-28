@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PortalShell } from '@/components/portal-shell';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { verifyLedgerEntries, type LedgerEntry } from '@/lib/ledger-core';
 
 type LabTest = { test_status: 'PASS' | 'FAIL'; residue_ppm: number; max_limit_ppm: number; lab_name: string; certificate_url: string | null; created_at: string };
@@ -30,6 +31,7 @@ export default function RegulatorDashboard() {
   const [loading, setLoading] = useState(true);
   const [recallReason, setRecallReason] = useState('');
   const [recalling, setRecalling] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const initiateRecall = async (batch: Batch) => {
     const reason = recallReason.trim();
@@ -139,21 +141,22 @@ export default function RegulatorDashboard() {
   };
 
   return (
-    <PortalShell title="Regulator compliance console" description="Food safety oversight and traceability audit." icon={ShieldCheck}>
-      <div className="space-y-6">
-        <div className="flex justify-end"><Button onClick={() => void loadBatches()} disabled={loading} className="bg-green-700 hover:bg-green-800"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button></div>
-        {message && <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">{message}</div>}
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <StatCard label="Tracked batches" value={batches.length} icon={<ClipboardCheck className="text-green-700" />} />
-          <StatCard label="Pending lab tests" value={pendingTests} icon={<ClipboardCheck className="text-amber-600" />} />
-          <StatCard label="Active recalls" value={recalls} icon={<AlertTriangle className="text-red-600" />} tone="red" />
-          <StatCard label="Failed lab tests" value={failed} icon={<ShieldX className="text-red-600" />} tone="red" />
-          <StatCard label="Chain warnings" value={chainIssues} icon={<ShieldCheck className="text-green-700" />} />
-        </section>
+    <>
+      <PortalShell title="Regulator compliance console" description="Food safety oversight and traceability audit." icon={ShieldCheck} showWorkspaceLink={false} onHistoryClick={() => setShowHistory(true)}>
+        <div className="space-y-6">
+          <div className="flex justify-end"><Button onClick={() => void loadBatches()} disabled={loading} className="bg-green-700 hover:bg-green-800"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button></div>
+          {message && <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">{message}</div>}
+          <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <StatCard label="Tracked batches" value={batches.length} icon={<ClipboardCheck className="text-green-700" />} />
+            <StatCard label="Pending lab tests" value={pendingTests} icon={<ClipboardCheck className="text-amber-600" />} />
+            <StatCard label="Active recalls" value={recalls} icon={<AlertTriangle className="text-red-600" />} tone="red" />
+            <StatCard label="Failed lab tests" value={failed} icon={<ShieldX className="text-red-600" />} tone="red" />
+            <StatCard label="Chain warnings" value={chainIssues} icon={<ShieldCheck className="text-green-700" />} />
+          </section>
 
-        <Card className="portal-surface"><CardContent className="grid gap-3 p-4 md:grid-cols-2 lg:grid-cols-5"><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Batch ID or crop" className="portal-field" /><Input value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)} placeholder="Farm location / district" className="portal-field" /><select value={labFilter} onChange={(event) => setLabFilter(event.target.value as typeof labFilter)} className="portal-field h-9 rounded-lg px-3 text-sm"><option value="all">All lab outcomes</option><option value="passed">Lab passed</option><option value="pending">Lab pending</option><option value="failed">Lab failed</option></select><select value={selectedBatchCode} onChange={(event) => setSelectedBatchCode(event.target.value)} className="portal-field h-9 rounded-lg px-3 text-sm"><option value="">Select a visible batch</option>{visibleBatches.map((batch) => <option key={batch.id} value={batch.batch_code}>{batch.batch_code}</option>)}</select><Button onClick={exportReport} variant="outline" className="border-green-200 text-green-700 hover:bg-green-50"><Download className="mr-2 h-4 w-4" />Export report</Button></CardContent></Card>
+          <Card className="portal-surface"><CardContent className="grid gap-3 p-4 md:grid-cols-2 lg:grid-cols-5"><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Batch ID or crop" className="portal-field" /><Input value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)} placeholder="Farm location / district" className="portal-field" /><select value={labFilter} onChange={(event) => setLabFilter(event.target.value as typeof labFilter)} className="portal-field h-9 rounded-lg px-3 text-sm"><option value="all">All lab outcomes</option><option value="passed">Lab passed</option><option value="pending">Lab pending</option><option value="failed">Lab failed</option></select><select value={selectedBatchCode} onChange={(event) => setSelectedBatchCode(event.target.value)} className="portal-field h-9 rounded-lg px-3 text-sm"><option value="">Select a visible batch</option>{visibleBatches.map((batch) => <option key={batch.id} value={batch.batch_code}>{batch.batch_code}</option>)}</select><Button onClick={exportReport} variant="outline" className="border-green-200 text-green-700 hover:bg-green-50"><Download className="mr-2 h-4 w-4" />Export report</Button></CardContent></Card>
 
-        {alertBatches.length > 0 && <Card className="rounded-xl border border-red-200 bg-white shadow-sm"><CardHeader><CardTitle className="flex items-center text-red-800"><AlertTriangle className="mr-2 h-5 w-5" />Compliance alert queue</CardTitle></CardHeader><CardContent className="space-y-2">{alertBatches.slice(0, 5).map((batch) => <div key={batch.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm"><span className="font-mono font-semibold text-slate-900">{batch.batch_code}</span><span className="text-red-800">{batch.is_recalled ? 'Active recall' : failedTest(batch) ? 'Lab test failed' : 'Ledger review needed'}</span></div>)}</CardContent></Card>}
+          {alertBatches.length > 0 && <Card className="rounded-xl border border-red-200 bg-white shadow-sm"><CardHeader><CardTitle className="flex items-center text-red-800"><AlertTriangle className="mr-2 h-5 w-5" />Compliance alert queue</CardTitle></CardHeader><CardContent className="space-y-2">{alertBatches.slice(0, 5).map((batch) => <div key={batch.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm"><span className="font-mono font-semibold text-slate-900">{batch.batch_code}</span><span className="text-red-800">{batch.is_recalled ? 'Active recall' : failedTest(batch) ? 'Lab test failed' : 'Ledger review needed'}</span></div>)}</CardContent></Card>}
 
         <Card className="portal-surface">
           <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between"><CardTitle>Batch compliance register</CardTitle><div className="flex flex-wrap gap-2"><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search batch, crop, location" className="portal-field w-56" /><Button className={filter === 'all' ? 'portal-action' : ''} variant={filter === 'all' ? 'default' : 'outline'} onClick={() => setFilter('all')}>All</Button><Button variant={filter === 'recalls' ? 'destructive' : 'outline'} onClick={() => setFilter('recalls')}>Recalls</Button><Button className={filter === 'failed' ? 'portal-action' : ''} variant={filter === 'failed' ? 'default' : 'outline'} onClick={() => setFilter('failed')}>Lab failures</Button></div></CardHeader>
@@ -168,6 +171,40 @@ export default function RegulatorDashboard() {
         {selectedBatch && <Card className="portal-surface"><CardHeader><CardTitle>Batch detail: {selectedBatch.batch_code}</CardTitle><p className="text-sm text-slate-600">Handoffs and lab results are read-only compliance records.</p></CardHeader><CardContent className="grid gap-6 lg:grid-cols-2"><div><h3 className="mb-3 font-semibold text-slate-900">Trace timeline</h3><div className="space-y-3">{[...selectedBatch.batch_handoffs].sort((a, b) => a.created_at.localeCompare(b.created_at)).map((handoff, index) => <div key={`${handoff.stage}-${index}`} className="rounded-lg border border-slate-100 bg-slate-50 p-3"><p className="font-medium capitalize text-slate-900">{handoff.stage} · {handoff.assigned_retailer_name ?? 'Supply-chain update'}</p><p className="mt-1 text-xs text-slate-500">{new Date(handoff.created_at).toLocaleString()}</p>{handoff.notes && <p className="mt-2 text-sm text-slate-600">{handoff.notes}</p>}</div>)}</div></div><div><h3 className="mb-3 font-semibold text-slate-900">Residue testing</h3><div className="space-y-3">{selectedBatch.lab_tests.length === 0 ? <p className="text-sm text-slate-500">No lab test is attached yet.</p> : selectedBatch.lab_tests.map((test, index) => <div key={`${test.lab_name}-${index}`} className="rounded-lg border border-green-100 p-3 text-sm"><p className="font-medium text-slate-900">{test.lab_name} · {test.test_status}</p><p className="mt-1 text-slate-600">{test.residue_ppm} ppm / limit {test.max_limit_ppm} ppm</p>{test.certificate_url && <a href={test.certificate_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-green-700 hover:underline">Open certificate <ExternalLink className="ml-1 h-3 w-3" /></a>}</div>)}</div></div>{!selectedBatch.is_recalled && <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-5 lg:col-span-2"><div className="flex items-start gap-3"><div className="rounded-lg bg-red-100 p-2 text-red-700"><AlertTriangle className="h-5 w-5" /></div><div className="flex-1"><h3 className="font-semibold text-red-800">Initiate food-safety recall</h3><p className="mt-1 text-sm text-red-700">This will mark the batch as recalled and trigger downstream notifications and stock blocking.</p><div className="mt-4 flex flex-col gap-3 sm:flex-row"><Input value={recallReason} onChange={(event) => setRecallReason(event.target.value)} placeholder="Enter recall reason" className="bg-white" disabled={recalling} /><Button variant="destructive" onClick={() => void initiateRecall(selectedBatch)} disabled={recalling || !recallReason.trim()} className="shrink-0"><AlertTriangle className="mr-2 h-4 w-4" />{recalling ? 'Initiating…' : 'Initiate Recall'}</Button></div></div></div></div>}</CardContent></Card>}
       </div>
     </PortalShell>
+
+    <Dialog open={showHistory} onOpenChange={setShowHistory}>
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>All Batches</DialogTitle>
+          <DialogDescription>{batches.length} batch{batches.length !== 1 ? 'es' : ''} in compliance register</DialogDescription>
+        </DialogHeader>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Batch</TableHead>
+              <TableHead>Source</TableHead>
+              <TableHead>Lab safety</TableHead>
+              <TableHead>Audit chain</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Trace</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {batches.map((batch) => (
+              <TableRow key={batch.id}>
+                <TableCell><p className="font-mono font-semibold">{batch.batch_code}</p><p className="text-xs text-slate-500">{batch.crop_name}</p></TableCell>
+                <TableCell>{batch.farm_location}</TableCell>
+                <TableCell>{batch.lab_tests.length === 0 ? <Badge variant="outline">Pending</Badge> : failedTest(batch) ? <Badge variant="destructive">Failed</Badge> : <Badge className="bg-emerald-600"><CheckCircle2 className="mr-1" />Passed</Badge>}</TableCell>
+                <TableCell>{chainIssue(batch) ? <Badge variant="destructive">Review needed</Badge> : <Badge variant="outline">{batch.batch_handoffs.length} stages</Badge>}</TableCell>
+                <TableCell><Badge variant={batch.is_recalled ? 'destructive' : 'secondary'}>{batch.is_recalled ? 'RECALLED' : batch.status.replace('_', ' ').toUpperCase()}</Badge></TableCell>
+                <TableCell><Link href={`/trace/${encodeURIComponent(batch.batch_code)}`} className="inline-flex items-center text-sm font-medium text-green-700 hover:underline">Open <ExternalLink className="ml-1 h-3 w-3" /></Link></TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

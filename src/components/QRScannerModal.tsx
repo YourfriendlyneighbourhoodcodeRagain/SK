@@ -4,9 +4,9 @@ import { FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Html5Qrcode } from 'html5-qrcode';
 
-export function QRScannerModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function QRScannerModal({ open, onClose, onScan }: { open: boolean; onClose: () => void; onScan?: (batchCode: string) => void }) {
   const router = useRouter(); const scannerId = useId().replace(/:/g, ''); const scanner = useRef<Html5Qrcode | null>(null); const [manualCode, setManualCode] = useState(''); const [error, setError] = useState('');
-  function goToTrace(value: string) { const cleaned = value.trim(); const match = cleaned.match(/\/trace\/([^/?#]+)/i); const batchCode = decodeURIComponent(match?.[1] ?? cleaned); if (!batchCode) { setError('Enter a valid Batch ID.'); return; } onClose(); router.push(`/trace/${encodeURIComponent(batchCode)}`); }
+  function goToTrace(value: string) { const cleaned = value.trim(); const match = cleaned.match(/\/trace\/([^/?#]+)/i); const batchCode = decodeURIComponent(match?.[1] ?? cleaned); if (!batchCode) { setError('Enter a valid Batch ID.'); return; } onClose(); if (onScan) onScan(batchCode); else router.push(`/trace/${encodeURIComponent(batchCode)}`); }
   // The scanner is intentionally initialized only when the modal opens.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (!open) return; let active = true; const start = async () => { try { const instance = new Html5Qrcode(scannerId); scanner.current = instance; await instance.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 240, height: 240 } }, (text) => { if (active) goToTrace(text); }, () => undefined); } catch { if (active) setError('Camera access is unavailable. Enter the Batch ID manually.'); } }; void start(); return () => { active = false; const instance = scanner.current; scanner.current = null; if (instance?.isScanning) void instance.stop().catch(() => undefined); }; }, [open, scannerId]);

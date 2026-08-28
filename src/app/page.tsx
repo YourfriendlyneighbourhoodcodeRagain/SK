@@ -80,7 +80,7 @@ export default function Home() {
                   Trace Batch
                 </Button>
                 <Button type="button" variant="outline" size="lg" onClick={() => setIsScannerOpen(true)} className="rounded-xl bg-emerald-600 py-6 text-lg font-bold text-white shadow hover:bg-emerald-700">
-                  📷 Scan Produce QR Code
+                  📷 Scan Product QR Code
                 </Button>
               </form>
             </CardContent>
