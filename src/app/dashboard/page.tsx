@@ -29,6 +29,7 @@ export default function DashboardPage() {
       const { data, error: profileError } = await supabase.from('profiles').select('full_name, role, location').eq('id', user.id).single();
       if (profileError || !data) { setError('Your account is authenticated, but its profile could not be loaded. Please contact an administrator.'); return; }
       if (data.role === 'aggregator') { router.replace('/aggregator'); return; }
+      if (data.role === 'distributor') { router.replace('/distributor'); return; }
       setProfile(data as Profile);
     }
   }, [router]);

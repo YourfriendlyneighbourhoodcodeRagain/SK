@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Send, Truck } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, ArrowRight, BadgeCheck, CheckCircle2, ClipboardList, Clock3, ExternalLink, FlaskConical, MapPin, PackageCheck, RefreshCw, Send, ShieldAlert, ShieldCheck, Store, Truck } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { recordHandoff } from '@/lib/blockchain';
 import { Button } from '@/components/ui/button';
@@ -10,86 +11,107 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PortalShell } from '@/components/portal-shell';
 
-type Batch = { id: string; batch_code: string; crop_name: string; total_weight_kg: number; farm_location: string; batch_handoffs: { assigned_distributor_name: string | null; stage: string }[] };
+type LabTest = { test_status: 'PASS' | 'FAIL'; lab_name: string; created_at: string; residue_ppm: number; max_limit_ppm: number; certificate_url: string | null };
+type Handoff = { assigned_distributor_name: string | null; assigned_retailer_name: string | null; stage: string; location: string | null; created_at: string; ledger_version: number };
+type Batch = { id: string; batch_code: string; crop_name: string; total_weight_kg: number; farm_location: string; harvest_date: string; status: string; is_recalled: boolean; lab_tests: LabTest[]; batch_handoffs: Handoff[] };
 type Retailer = { id: string; full_name: string; location: string | null };
+type Delivery = { id: string; batch_id: string; distributor_id: string; retailer_id: string; quantity_kg: number; status: string; dispatched_at: string; batch: { batch_code: string; crop_name: string } | null; retailer: { full_name: string; location: string | null } | null };
+type Notice = { type: 'success' | 'error'; text: string };
+
+const dispatchQuery = 'id, batch_code, crop_name, total_weight_kg, farm_location, harvest_date, status, is_recalled, lab_tests(test_status, lab_name, created_at, residue_ppm, max_limit_ppm, certificate_url), batch_handoffs(assigned_distributor_name, assigned_retailer_name, stage, location, created_at, ledger_version)';
 
 export default function DistributorPage() {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [retailers, setRetailers] = useState<Retailer[]>([]);
+  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const [safetyAlertCount, setSafetyAlertCount] = useState(0);
   const [selected, setSelected] = useState<Batch | null>(null);
   const [retailerId, setRetailerId] = useState('');
-  const [message, setMessage] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [notes, setNotes] = useState('');
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [sending, setSending] = useState(false);
 
   async function load() {
+    setLoadError('');
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setMessage('Sign in with a distributor account to view assigned batches.'); return; }
-    const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
-    if (!profile) { setMessage('Your distributor profile could not be loaded.'); return; }
-    const [{ data, error }, { data: retailerRows }] = await Promise.all([
-      supabase.from('batches')
-        .select('id, batch_code, crop_name, total_weight_kg, farm_location, batch_handoffs!inner(assigned_distributor_name, stage), lab_tests!inner(test_status)')
-        .eq('status', 'in_transit').eq('is_recalled', false).eq('lab_tests.test_status', 'PASS')
-        .eq('batch_handoffs.stage', 'logistics').eq('batch_handoffs.assigned_distributor_name', profile.full_name)
-        .order('created_at', { ascending: false }),
+    if (!user) { setLoadError('Sign in with a distributor account to view assigned batches.'); setLoading(false); return; }
+    const { data: profile, error: profileError } = await supabase.from('profiles').select('full_name, role').eq('id', user.id).single();
+    if (profileError || !profile) { setLoadError('Your distributor profile could not be loaded. Please contact an administrator.'); setLoading(false); return; }
+    if (profile.role !== 'distributor') { setLoadError('This workspace is available to distributor accounts only.'); setLoading(false); return; }
+    const [batchResponse, retailerResponse, deliveryResponse, safetyResponse] = await Promise.all([
+      supabase.from('batches').select(dispatchQuery).eq('status', 'in_transit').eq('is_recalled', false).eq('lab_tests.test_status', 'PASS').eq('batch_handoffs.stage', 'logistics').eq('batch_handoffs.assigned_distributor_name', profile.full_name).order('created_at', { ascending: false }),
       supabase.from('profiles').select('id, full_name, location').eq('role', 'retailer').order('full_name'),
+      supabase.from('retailer_deliveries').select('id, batch_id, distributor_id, retailer_id, quantity_kg, status, dispatched_at, batches(batch_code, crop_name), profiles!retailer_id(full_name, location)').eq('distributor_id', user.id).order('dispatched_at', { ascending: false }).limit(8),
+      supabase.from('batches').select('id, is_recalled, lab_tests(test_status), batch_handoffs!inner(assigned_distributor_name, stage)').eq('batch_handoffs.stage', 'logistics').eq('batch_handoffs.assigned_distributor_name', profile.full_name),
     ]);
-    if (error) setMessage(error.message); else setBatches((data ?? []) as Batch[]);
-    setRetailers((retailerRows ?? []) as Retailer[]);
+    if (batchResponse.error) setLoadError('We could not load your assigned batches. Please try again.');
+    else setBatches((batchResponse.data ?? []) as Batch[]);
+    if (retailerResponse.error) setLoadError((current) => current || 'The retailer directory could not be loaded.');
+    else setRetailers((retailerResponse.data ?? []) as Retailer[]);
+    if (!deliveryResponse.error) setDeliveries((deliveryResponse.data ?? []).map((delivery) => ({ ...delivery, batch: Array.isArray(delivery.batches) ? delivery.batches[0] : delivery.batches, retailer: Array.isArray(delivery.profiles) ? delivery.profiles[0] : delivery.profiles })) as Delivery[]);
+    if (!safetyResponse.error) setSafetyAlertCount((safetyResponse.data ?? []).filter((batch) => batch.is_recalled || (Array.isArray(batch.lab_tests) && batch.lab_tests.some((test) => test.test_status === 'FAIL'))).length);
+    setLoading(false);
   }
 
   useEffect(() => { const timer = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(timer); }, []);
 
-  async function send(event: React.FormEvent) {
+  async function refresh() { setRefreshing(true); await load(); setRefreshing(false); }
+  function selectBatch(batch: Batch) { setSelected(batch); setRetailerId(''); setQuantity(String(batch.total_weight_kg)); setNotes(''); setNotice(null); }
+  function clearSelection() { setSelected(null); setRetailerId(''); setQuantity(''); setNotes(''); }
+
+  async function send(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected) return;
     const recipient = retailers.find((retailer) => retailer.id === retailerId);
-    if (!recipient) { setMessage('Select a retailer from the directory.'); return; }
-    setMessage('');
+    const quantityValue = Number(quantity);
+    const passed = selected.lab_tests.some((test) => test.test_status === 'PASS');
+    if (!recipient) { setNotice({ type: 'error', text: 'Choose a destination retailer before dispatching.' }); return; }
+    if (!Number.isFinite(quantityValue) || quantityValue <= 0 || quantityValue > Number(selected.total_weight_kg)) { setNotice({ type: 'error', text: `Enter a quantity between 0 and ${selected.total_weight_kg} kg.` }); return; }
+    if (selected.is_recalled) { setNotice({ type: 'error', text: 'This batch is recalled and cannot be dispatched.' }); return; }
+    if (!passed) { setNotice({ type: 'error', text: 'This batch has no passing lab result and cannot be dispatched.' }); return; }
+    setNotice(null); setSending(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Please sign in again.');
-      const { error: deliveryError } = await supabase.from('retailer_deliveries').insert({
-        batch_id: selected.id,
-        distributor_id: user.id,
-        retailer_id: recipient.id,
-        quantity_kg: selected.total_weight_kg,
-        status: 'WAITING',
-      });
+      if (!user) throw new Error('Your session has expired. Please sign in again.');
+      const { error: deliveryError } = await supabase.from('retailer_deliveries').insert({ batch_id: selected.id, distributor_id: user.id, retailer_id: recipient.id, quantity_kg: quantityValue, status: 'WAITING' });
       if (deliveryError) throw deliveryError;
-
-      // Once the distributor dispatches the batch, it should no longer appear
-      // in the distributor's available-to-send queue. The retailer delivery
-      // remains independently trackable in retailer_deliveries until receipt.
-      const { error: statusError } = await supabase
-        .from('batches')
-        .update({ status: 'at_retailer' })
-        .eq('id', selected.id)
-        .eq('is_recalled', false);
+      const { error: statusError } = await supabase.from('batches').update({ status: 'at_retailer' }).eq('id', selected.id).eq('is_recalled', false);
       if (statusError) throw statusError;
-
-      await recordHandoff({
-        batchId: selected.id,
-        stage: 'logistics',
-        assignedRetailerName: recipient.full_name,
-        notes: `Sent to ${recipient.full_name}`,
-        location: recipient.location ?? undefined,
-      });
-      setMessage(`${selected.batch_code} is now assigned to ${recipient.full_name}.`);
-      setSelected(null); setRetailerId(''); await load();
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not send this batch.'); }
+      await recordHandoff({ batchId: selected.id, stage: 'logistics', assignedRetailerName: recipient.full_name, notes: notes.trim() || `Sent ${quantityValue} kg to ${recipient.full_name}`, location: recipient.location ?? undefined });
+      setNotice({ type: 'success', text: `${selected.batch_code} was dispatched to ${recipient.full_name}. The delivery and logistics handoff were recorded.` });
+      clearSelection(); await load();
+    } catch (error) { console.error('Distributor dispatch failed:', error); setNotice({ type: 'error', text: error instanceof Error ? error.message : 'The dispatch could not be recorded.' }); }
+    finally { setSending(false); }
   }
 
-  return <PortalShell title="Distributor logistics" description="Only quality-passed batches are ready to be sent to a retailer." icon={Truck}>
-    {message && <p className="mb-5 rounded-lg border border-green-200 bg-green-50 p-3 text-green-800">{message}</p>}
-    <div className="grid gap-4 md:grid-cols-2">
-      {batches.map((batch) => <Card key={batch.id} className="portal-surface"><CardHeader><CardTitle>{batch.crop_name}</CardTitle><CardDescription className="font-mono">{batch.batch_code}</CardDescription></CardHeader><CardContent><p className="mb-4 text-sm text-slate-600">{batch.total_weight_kg} kg · {batch.farm_location}</p><Button className="portal-action w-full py-4 text-lg font-bold" onClick={() => { setSelected(batch); setMessage(''); }}><Send className="mr-2" />Send to Retailer</Button></CardContent></Card>)}
+  const readyQuantity = batches.reduce((total, batch) => total + Number(batch.total_weight_kg), 0);
+  return <PortalShell title="Distributor Logistics" description="Move verified food batches safely to approved retailers." icon={Truck} showWorkspaceLink={false}>
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 rounded-xl border border-green-100 bg-gradient-to-r from-green-50 to-white p-5 sm:flex-row sm:items-center"><div><p className="text-sm font-semibold text-green-800">Your next action</p><p className="mt-1 text-slate-700">Review the batch, confirm its quality status, choose a retailer, and record the dispatch.</p></div><Button variant="outline" onClick={() => void refresh()} disabled={loading || refreshing} className="shrink-0 border-green-200 text-green-700 hover:bg-green-50"><RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh batches</Button></div>
+      {notice && <div role={notice.type === 'error' ? 'alert' : 'status'} className={`flex items-start gap-3 rounded-lg border p-4 ${notice.type === 'success' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-800'}`}><span className="mt-0.5">{notice.type === 'success' ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}</span><p>{notice.text}</p></div>}
+      {loadError && <div role="alert" className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800"><ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" /><p>{loadError}</p></div>}
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5"><StatCard label="Batches ready" value={loading ? '—' : batches.length} icon={<PackageCheck />} tone="green" /><StatCard label="Quantity ready" value={loading ? '—' : `${readyQuantity} kg`} icon={<Truck />} tone="blue" /><StatCard label="Quality passed" value={loading ? '—' : batches.length} icon={<FlaskConical />} tone="green" /><StatCard label="Completed deliveries" value={loading ? '—' : deliveries.filter((delivery) => delivery.status === 'RECEIVED').length} icon={<CheckCircle2 />} tone="blue" /><StatCard label="Safety alerts" value={loading ? '—' : safetyAlertCount} icon={<ShieldAlert />} tone={safetyAlertCount ? 'red' : 'amber'} /></section>
+      <section><div className="mb-4 flex items-end justify-between gap-3"><div><p className="text-xs font-bold tracking-[0.18em] text-green-700">ASSIGNED INVENTORY</p><h2 className="mt-1 text-2xl font-bold text-slate-900">Ready for dispatch</h2><p className="mt-1 text-sm text-slate-600">These batches have passed quality checks and are assigned to your account.</p></div><span className="hidden rounded-full bg-green-50 px-3 py-1.5 text-xs font-bold text-green-800 sm:block">{batches.length} available</span></div>{loading ? <LoadingState /> : batches.length ? <div className="grid gap-4 lg:grid-cols-2">{batches.map((batch) => <BatchCard key={batch.id} batch={batch} selected={selected?.id === batch.id} onSelect={() => selectBatch(batch)} />)}</div> : <EmptyState onRefresh={() => void refresh()} />}</section>
+      {selected && <DispatchPanel batch={selected} retailers={retailers} retailerId={retailerId} quantity={quantity} notes={notes} sending={sending} onRetailerChange={setRetailerId} onQuantityChange={setQuantity} onNotesChange={setNotes} onSubmit={send} onClose={clearSelection} />}
+      <DeliveryHistory deliveries={deliveries} />
     </div>
-    {!batches.length && <Card className="portal-surface"><CardContent className="p-6 text-slate-600">No quality-passed batches are waiting for distribution.</CardContent></Card>}
-    <form onSubmit={send} className={`mt-6 ${selected ? 'block' : 'hidden'}`}>
-      <Card className="portal-surface"><CardHeader><CardTitle>Send {selected?.batch_code}</CardTitle></CardHeader><CardContent className="space-y-4">
-        <div><Label htmlFor="retailer">Target retailer</Label><select id="retailer" value={retailerId} onChange={(event) => setRetailerId(event.target.value)} className="portal-field h-10 w-full rounded-md px-3" required><option value="">Select a retailer</option>{retailers.map((retailer) => <option key={retailer.id} value={retailer.id}>{retailer.full_name}{retailer.location ? ` · ${retailer.location}` : ''}</option>)}</select></div>
-        <Button type="submit" className="portal-action py-4 text-lg font-bold">Confirm dispatch</Button>
-      </CardContent></Card>
-    </form>
   </PortalShell>;
 }
+
+function StatCard({ label, value, icon, tone }: { label: string; value: string | number; icon: React.ReactNode; tone: 'green' | 'blue' | 'amber' | 'red' }) { const styles = { green: 'border-green-100 bg-green-50 text-green-700', blue: 'border-blue-100 bg-blue-50 text-blue-700', amber: 'border-amber-100 bg-amber-50 text-amber-700', red: 'border-red-100 bg-red-50 text-red-700' }; return <Card className="border-slate-200 bg-white shadow-sm"><CardContent className="flex items-center justify-between p-4"><div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold text-slate-900">{value}</p></div><span className={`rounded-xl p-3 ${styles[tone]}`}>{icon}</span></CardContent></Card>; }
+
+function BatchCard({ batch, selected, onSelect }: { batch: Batch; selected: boolean; onSelect: () => void }) { const lab = batch.lab_tests.find((test) => test.test_status === 'PASS'); const verifiedHandoffs = batch.batch_handoffs.filter((handoff) => handoff.ledger_version === 1).length; return <Card className={`border bg-white shadow-sm transition-shadow hover:shadow-md ${selected ? 'border-green-500 ring-2 ring-green-100' : 'border-slate-200'}`}><CardHeader className="pb-3"><div className="flex items-start justify-between gap-3"><div><CardTitle className="text-xl text-slate-900">{batch.crop_name}</CardTitle><CardDescription className="mt-1 font-mono text-xs">{batch.batch_code}</CardDescription></div><span className="flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-800"><ShieldCheck className="h-3.5 w-3.5" /> Safe to dispatch</span></div></CardHeader><CardContent><div className="grid grid-cols-2 gap-4 border-y border-slate-100 py-4"><Detail label="Available quantity" value={`${batch.total_weight_kg} kg`} /><Detail label="Source farm" value={batch.farm_location} /><Detail label="Harvest date" value={formatDate(batch.harvest_date)} /><Detail label="Shipment status" value="Ready for retailer" /></div><div className="mt-4 flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-600"><span className="flex items-center gap-1.5 text-green-700"><BadgeCheck className="h-4 w-4" /> Lab PASS{lab ? ` · ${formatDate(lab.created_at)}` : ''}</span><span className="flex items-center gap-1.5"><ClipboardList className="h-4 w-4 text-blue-600" /> {verifiedHandoffs} verified handoff{verifiedHandoffs === 1 ? '' : 's'}</span></div><div className="mt-5 flex flex-wrap gap-3"><Button nativeButton={false} render={<Link href={`/trace/${encodeURIComponent(batch.batch_code)}`} />} variant="outline" className="border-green-200 text-green-700 hover:bg-green-50"><ExternalLink className="mr-2 h-4 w-4" />View full trace</Button><Button onClick={onSelect} className="portal-action ml-auto"><Send className="mr-2 h-4 w-4" />Review and dispatch</Button></div></CardContent></Card>; }
+
+function DispatchPanel({ batch, retailers, retailerId, quantity, notes, sending, onRetailerChange, onQuantityChange, onNotesChange, onSubmit, onClose }: { batch: Batch; retailers: Retailer[]; retailerId: string; quantity: string; notes: string; sending: boolean; onRetailerChange: (value: string) => void; onQuantityChange: (value: string) => void; onNotesChange: (value: string) => void; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void; onClose: () => void }) { const lab = batch.lab_tests.find((test) => test.test_status === 'PASS'); const traceStages = [{ label: 'Farm', value: batch.farm_location, icon: MapPin }, { label: 'Lab test', value: lab?.lab_name ?? 'Passed quality check', icon: FlaskConical }, { label: 'Distributor', value: 'Your logistics desk', icon: Truck }, { label: 'Retailer', value: retailerId ? retailers.find((retailer) => retailer.id === retailerId)?.full_name ?? 'Selected retailer' : 'Choose destination', icon: Store }]; return <section id="dispatch-panel" className="scroll-mt-6"><Card className="overflow-hidden border-green-200 bg-white shadow-lg"><CardHeader className="border-b border-green-100 bg-green-50/60"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold tracking-[0.18em] text-green-700">NEXT ACTION</p><CardTitle className="mt-1 text-2xl text-slate-900">Review and dispatch batch</CardTitle><CardDescription className="mt-1">Confirm the evidence, choose a destination, and record the handoff.</CardDescription></div><Button variant="ghost" onClick={onClose} className="text-slate-500">Close</Button></div></CardHeader><CardContent className="grid gap-8 p-5 md:p-7 lg:grid-cols-[1fr_1.05fr]"><div><div className="rounded-xl bg-slate-50 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-lg font-bold text-slate-900">{batch.crop_name}</p><p className="mt-1 font-mono text-xs text-slate-500">{batch.batch_code}</p></div><span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-800">PASS · NOT RECALLED</span></div><div className="mt-4 grid grid-cols-2 gap-4"><Detail label="Source farm" value={batch.farm_location} /><Detail label="Quantity" value={`${batch.total_weight_kg} kg available`} /><Detail label="Harvest date" value={formatDate(batch.harvest_date)} /><Detail label="Current stage" value="In transit to distributor" /></div></div><div className="mt-6"><p className="mb-3 text-sm font-bold text-slate-900">Trace history</p><div className="space-y-3">{traceStages.map((stage, index) => { const Icon = stage.icon; return <div key={stage.label} className="relative flex items-center gap-3"><span className="relative z-10 grid size-8 place-items-center rounded-full bg-green-100 text-green-700"><Icon className="size-4" /></span>{index < traceStages.length - 1 && <span className="absolute left-4 top-8 h-5 w-px bg-green-200" />}<div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">{stage.label}</p><p className="text-sm font-semibold text-slate-800">{stage.value}</p></div></div>; })}</div></div></div><form onSubmit={onSubmit} className="space-y-5 border-t border-slate-100 pt-6 lg:border-l lg:border-t-0 lg:pl-8"><div><Label htmlFor="retailer">Destination retailer</Label><select id="retailer" value={retailerId} onChange={(event) => onRetailerChange(event.target.value)} className="portal-field mt-2 h-11 w-full rounded-lg px-3" required><option value="">Choose the retailer receiving this batch</option>{retailers.map((retailer) => <option key={retailer.id} value={retailer.id}>{retailer.full_name}{retailer.location ? ` · ${retailer.location}` : ''}</option>)}</select>{!retailers.length && <p className="mt-2 text-sm text-amber-700">No retailer profiles are available yet.</p>}</div><div><Label htmlFor="quantity">Quantity to dispatch (kg)</Label><Input id="quantity" type="number" min="0.01" max={batch.total_weight_kg} step="0.01" value={quantity} onChange={(event) => onQuantityChange(event.target.value)} className="portal-field mt-2 h-11" required /><p className="mt-1 text-xs text-slate-500">Maximum available: {batch.total_weight_kg} kg</p></div><div><Label htmlFor="dispatch-notes">Delivery notes <span className="font-normal text-slate-500">(optional)</span></Label><Input id="dispatch-notes" value={notes} onChange={(event) => onNotesChange(event.target.value)} placeholder="Example: Refrigerated pickup at 08:30" className="portal-field mt-2 h-11" /></div><div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">I confirm that this quality-passed batch is being dispatched to the selected retailer.</div><Button type="submit" disabled={sending || !retailers.length} className="portal-action h-12 w-full text-base">{sending ? 'Recording dispatch…' : <><Send className="mr-2 h-4 w-4" />Confirm dispatch</>}</Button></form></CardContent></Card></section>; }
+
+function DeliveryHistory({ deliveries }: { deliveries: Delivery[] }) { return <section><div className="mb-4 flex items-end justify-between gap-3"><div><p className="text-xs font-bold tracking-[0.18em] text-green-700">AUDIT TRAIL</p><h2 className="mt-1 text-xl font-bold text-slate-900">Recent deliveries</h2><p className="mt-1 text-sm text-slate-600">Completed dispatches appear here for audit and follow-up.</p></div><Clock3 className="hidden h-5 w-5 text-slate-400 sm:block" /></div>{deliveries.length ? <Card className="overflow-hidden border-slate-200 bg-white shadow-sm"><div className="divide-y divide-slate-100">{deliveries.map((delivery) => <div key={delivery.id} className="grid gap-3 p-4 sm:grid-cols-[1.3fr_1fr_0.7fr_1fr_auto] sm:items-center"><div><p className="font-mono text-sm font-bold text-slate-900">{delivery.batch?.batch_code ?? 'Batch record'}</p><p className="text-sm text-slate-600">{delivery.batch?.crop_name ?? 'Product'}</p></div><div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">Retailer</p><p className="text-sm font-semibold text-slate-800">{delivery.retailer?.full_name ?? 'Retailer'}</p></div><div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">Quantity</p><p className="text-sm font-semibold text-slate-800">{delivery.quantity_kg} kg</p></div><div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">Dispatched</p><p className="text-sm text-slate-600">{formatDateTime(delivery.dispatched_at)}</p></div><div><span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800"><Clock3 className="h-3 w-3" /> Awaiting receipt</span><Link href={`/trace/${encodeURIComponent(delivery.batch?.batch_code ?? '')}`} className="mt-2 block text-xs font-semibold text-green-700 hover:underline">View trace <ArrowRight className="inline h-3 w-3" /></Link></div></div>)}</div></Card> : <Card className="border-slate-200 bg-white shadow-sm"><CardContent className="p-6 text-center"><ClipboardList className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-3 font-semibold text-slate-900">No deliveries have been recorded yet.</p><p className="mt-1 text-sm text-slate-600">Completed dispatches will appear here for audit and follow-up.</p></CardContent></Card>}</section>; }
+
+function EmptyState({ onRefresh }: { onRefresh: () => void }) { return <Card className="border-dashed border-slate-300 bg-white shadow-sm"><CardContent className="p-8 text-center"><PackageCheck className="mx-auto h-10 w-10 text-slate-300" /><h3 className="mt-4 text-lg font-bold text-slate-900">No batches are ready for dispatch.</h3><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">A batch may be unavailable because the aggregator has not assigned it, the laboratory test is pending, it has already been dispatched, or it has been recalled or blocked.</p><Button onClick={onRefresh} variant="outline" className="mt-5 border-green-200 text-green-700 hover:bg-green-50"><RefreshCw className="mr-2 h-4 w-4" />Refresh batches</Button></CardContent></Card>; }
+function LoadingState() { return <div className="grid gap-4 lg:grid-cols-2"><Card className="animate-pulse border-slate-200 bg-white"><CardContent className="space-y-4 p-6"><div className="h-5 w-1/2 rounded bg-slate-100" /><div className="h-4 w-1/3 rounded bg-slate-100" /><div className="h-20 rounded bg-slate-100" /><div className="h-10 rounded bg-slate-100" /></CardContent></Card><Card className="hidden animate-pulse border-slate-200 bg-white lg:block"><CardContent className="space-y-4 p-6"><div className="h-5 w-2/3 rounded bg-slate-100" /><div className="h-4 w-1/3 rounded bg-slate-100" /><div className="h-20 rounded bg-slate-100" /><div className="h-10 rounded bg-slate-100" /></CardContent></Card></div>; }
+function Detail({ label, value }: { label: string; value: string }) { return <div className="min-w-0"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 truncate text-sm font-semibold text-slate-800">{value}</p></div>; }
+function formatDate(value: string) { return new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); }
+function formatDateTime(value: string) { return new Date(value).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); }
