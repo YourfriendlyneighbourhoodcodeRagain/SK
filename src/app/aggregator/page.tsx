@@ -14,7 +14,7 @@ import { QRScannerModal } from '@/components/QRScannerModal';
 
 type Workflow = 'receive' | 'lab' | 'sell';
 type LookupMode = 'scan' | 'manual';
-type Batch = { id: string; batch_code: string; crop_name: string; farm_location: string; harvest_date: string; total_weight_kg: number; status: string; is_recalled: boolean };
+type Batch = { id: string; batch_code: string; crop_name: string; farm_location: string; harvest_date: string; total_weight_kg: number; status: string; is_recalled: boolean; profiles?: { full_name: string; location: string | null } | null; lab_tests?: Array<{ test_status: string }> };
 type Distributor = { id: string; full_name: string; location: string | null };
 type Sale = { id: string; batch_id: string; assigned_distributor_name: string; quantity_kg: number; notes: string | null; created_at: string; batch: { batch_code: string; crop_name: string } | null };
 type ReceivedBatch = Batch & { lab_tests?: Array<{ test_status: string }> };
@@ -61,14 +61,26 @@ export default function AggregatorDashboard() {
     }
   }, []);
 
-  async function lookupBatch(code: string, target: 'receive' | 'lab' | 'sell') {
+  async function lookupBatch(eventOrCode: React.MouseEvent<HTMLButtonElement> | string | undefined, codeOrTarget: string, requestedTarget?: 'receive' | 'lab' | 'sell') {
+    const event = typeof eventOrCode === 'string' ? undefined : eventOrCode;
+    const code = typeof eventOrCode === 'string' ? eventOrCode : codeOrTarget;
+    const target = requestedTarget ?? codeOrTarget as 'receive' | 'lab' | 'sell';
+    event?.preventDefault();
     setLookupError(''); setStatus(null);
-    const cleanCode = code.trim();
+    const cleanCode = code.trim().toUpperCase();
     if (!cleanCode) { setLookupError('Enter or scan a batch ID first.'); return; }
     setLoading(target === 'receive' ? 'receiveLookup' : target === 'lab' ? 'labLookup' : 'sellLookup');
-    const { data, error } = await supabase.from('batches').select('id, batch_code, crop_name, farm_location, harvest_date, total_weight_kg, status, is_recalled').eq('batch_code', cleanCode).single();
+    const { data, error } = await supabase.from('batches').select('*, profiles:farmer_id(full_name, location), lab_tests(*)').eq('batch_code', cleanCode).single();
     setLoading(null);
-    if (error || !data) { setLookupError('Batch not found. Check the batch ID and try again.'); return; }
+    if (error) {
+      console.error('Failed to find batch:', error);
+      setStatus({ type: 'error', text: 'Could not find that batch. Check the batch ID and try again.' });
+      return;
+    }
+    if (!data) {
+      setStatus({ type: 'error', text: 'No matching batch was found. Check the batch ID and try again.' });
+      return;
+    }
     if (target === 'sell') {
       if (!['received_by_aggregator', 'in_transit'].includes(data.status)) { setLookupError('Only batches received by your hub can be sold to a distributor.'); return; }
       const { data: passedTests } = await supabase.from('lab_tests').select('id').eq('batch_id', data.id).eq('test_status', 'PASS').limit(1);
@@ -172,7 +184,7 @@ export default function AggregatorDashboard() {
   </>;
 }
 
-function SellWorkflow({ mode, onModeChange, code, onCodeChange, onLookup, loading, batch, distributors, search = '', onSearchChange, selectedDistributor, onSelectDistributor, quantity, onQuantityChange, notes, onNotesChange, onSubmit, submitting, choice, onChoiceChange, newDistributor, onNewDistributorChange, previousDistributors }: { mode: LookupMode; onModeChange: (mode: LookupMode) => void; code: string; onCodeChange: (value: string) => void; onLookup: () => void; loading: boolean; batch: Batch | null; distributors: Distributor[]; search?: string; onSearchChange?: (value: string) => void; selectedDistributor?: Distributor | null; onSelectDistributor?: (distributor: Distributor) => void; quantity?: string; onQuantityChange?: (value: string) => void; notes: string; onNotesChange: (value: string) => void; onSubmit: (event: React.FormEvent) => void; submitting: boolean; choice?: string; onChoiceChange?: (value: string) => void; newDistributor?: string; onNewDistributorChange?: (value: string) => void; previousDistributors?: string[] }) {
+function SellWorkflow({ mode, onModeChange, code, onCodeChange, onLookup, loading, batch, distributors, search = '', onSearchChange, selectedDistributor, onSelectDistributor, quantity, onQuantityChange, notes, onNotesChange, onSubmit, submitting, choice, onChoiceChange, newDistributor, onNewDistributorChange, previousDistributors }: { mode: LookupMode; onModeChange: (mode: LookupMode) => void; code: string; onCodeChange: (value: string) => void; onLookup: (event?: React.MouseEvent<HTMLButtonElement>) => void; loading: boolean; batch: Batch | null; distributors: Distributor[]; search?: string; onSearchChange?: (value: string) => void; selectedDistributor?: Distributor | null; onSelectDistributor?: (distributor: Distributor) => void; quantity?: string; onQuantityChange?: (value: string) => void; notes: string; onNotesChange: (value: string) => void; onSubmit: (event: React.FormEvent) => void; submitting: boolean; choice?: string; onChoiceChange?: (value: string) => void; newDistributor?: string; onNewDistributorChange?: (value: string) => void; previousDistributors?: string[] }) {
   void previousDistributors;
   const [localSearch, setLocalSearch] = useState('');
   const activeSearch = search || localSearch;
@@ -184,9 +196,9 @@ function SellWorkflow({ mode, onModeChange, code, onCodeChange, onLookup, loadin
 
 function WorkflowButton({ active, icon, title, description, onClick }: { active: boolean; icon: React.ReactNode; title: string; description: string; onClick: () => void }) { return <button type="button" aria-pressed={active} onClick={onClick} className={`group relative min-h-32 rounded-xl border-2 p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700 ${active ? 'border-green-600 bg-white ring-2 ring-green-100' : 'border-transparent bg-white/80 hover:border-green-300'}`}><span className={`mb-4 inline-flex rounded-xl p-3 transition-colors ${active ? 'bg-green-700 text-white' : 'bg-green-100 text-green-700 group-hover:bg-green-200'}`}>{icon}</span><span className="block font-bold text-slate-900">{title}</span><span className="mt-1 block text-sm leading-5 text-slate-600">{description}</span>{active && <span className="absolute right-3 top-3 h-2.5 w-2.5 rounded-full bg-amber-500 ring-4 ring-amber-100" />}</button>; }
 
-function BatchLookup({ mode, onModeChange, code, onCodeChange, onLookup, loading, batch }: { mode: LookupMode; onModeChange: (mode: LookupMode) => void; code: string; onCodeChange: (value: string) => void; onLookup: () => void; loading: boolean; batch: Batch | null }) {
+function BatchLookup({ mode, onModeChange, code, onCodeChange, onLookup, loading, batch }: { mode: LookupMode; onModeChange: (mode: LookupMode) => void; code: string; onCodeChange: (value: string) => void; onLookup: (event?: React.MouseEvent<HTMLButtonElement>) => void; loading: boolean; batch: Batch | null }) {
   const [scannerOpen, setScannerOpen] = useState(false);
-  return <div className="space-y-5"><div className="grid grid-cols-2 rounded-lg bg-slate-100 p-1"><Button type="button" variant={mode === 'scan' ? 'default' : 'ghost'} className={mode === 'scan' ? 'portal-action' : 'text-slate-600'} onClick={() => onModeChange('scan')}><ScanLine className="mr-2" />Scan QR code</Button><Button type="button" variant={mode === 'manual' ? 'default' : 'ghost'} className={mode === 'manual' ? 'portal-action' : 'text-slate-600'} onClick={() => onModeChange('manual')}><Search className="mr-2" />Enter manually</Button></div>{mode === 'scan' && <div className="rounded-lg border border-green-100 bg-green-50 p-4 text-sm text-slate-700"><p className="font-semibold text-green-800">Scan the batch label with your camera</p><Button type="button" onClick={() => setScannerOpen(true)} className="portal-action mt-3 min-h-11 w-full"><ScanLine className="mr-2" />Open camera scanner</Button></div>}<div className="flex flex-col gap-3 sm:flex-row"><div className="flex-1"><Label htmlFor={`batch-${mode}`}>{mode === 'scan' ? 'Scanned batch ID' : 'Batch ID'}</Label><Input id={`batch-${mode}`} className="portal-field mt-2" placeholder="Example: SK-2026-X981" value={code} onChange={(event) => onCodeChange(event.target.value)} /></div><Button type="button" onClick={onLookup} disabled={loading} className="portal-action mt-auto py-5">{loading ? 'Finding…' : 'Find batch'}</Button></div>{batch && <BatchSummary batch={batch} />}<QRScannerModal open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={(batchCode) => { onCodeChange(batchCode); window.setTimeout(onLookup, 0); }} /></div>;
+  return <div className="space-y-5"><div className="grid grid-cols-2 rounded-lg bg-slate-100 p-1"><Button type="button" variant={mode === 'scan' ? 'default' : 'ghost'} className={mode === 'scan' ? 'portal-action' : 'text-slate-600'} onClick={() => onModeChange('scan')}><ScanLine className="mr-2" />Scan QR code</Button><Button type="button" variant={mode === 'manual' ? 'default' : 'ghost'} className={mode === 'manual' ? 'portal-action' : 'text-slate-600'} onClick={() => onModeChange('manual')}><Search className="mr-2" />Enter manually</Button></div>{mode === 'scan' && <div className="rounded-lg border border-green-100 bg-green-50 p-4 text-sm text-slate-700"><p className="font-semibold text-green-800">Scan the batch label with your camera</p><Button type="button" onClick={() => setScannerOpen(true)} className="portal-action mt-3 min-h-11 w-full"><ScanLine className="mr-2" />Open camera scanner</Button></div>}<div className="flex flex-col gap-3 sm:flex-row"><div className="flex-1"><Label htmlFor={`batch-${mode}`}>{mode === 'scan' ? 'Scanned batch ID' : 'Batch ID'}</Label><Input id={`batch-${mode}`} className="portal-field mt-2" placeholder="Example: SK-2026-X981" value={code} onChange={(event) => onCodeChange(event.target.value)} /></div><Button type="button" onClick={(event) => { event.preventDefault(); onLookup(event); }} disabled={loading} className="portal-action mt-auto py-5">{loading ? 'Finding…' : 'Find batch'}</Button></div>{batch && <BatchSummary batch={batch} />}<QRScannerModal open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={(batchCode) => { onCodeChange(batchCode); window.setTimeout(() => onLookup(), 0); }} /></div>;
 }
 function BatchSummary({ batch }: { batch: Batch }) { return <div className="rounded-xl border border-green-200 bg-green-50 p-4"><p className="text-sm font-semibold text-green-800">Batch found · review before continuing</p><div className="mt-3 grid gap-3 text-sm sm:grid-cols-2"><Detail label="Batch ID" value={batch.batch_code} /><Detail label="Crop" value={batch.crop_name} /><Detail label="Farm" value={batch.farm_location} /><Detail label="Harvest date" value={new Date(batch.harvest_date).toLocaleDateString()} /><Detail label="Weight" value={`${batch.total_weight_kg} kg`} /><Detail label="Current status" value={batch.status.replaceAll('_', ' ')} /></div>{batch.is_recalled && <p className="mt-3 rounded-lg bg-red-100 p-2 text-sm font-medium text-red-800">This batch is recalled. Do not process it.</p>}</div>; }
 
