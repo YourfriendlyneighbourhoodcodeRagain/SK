@@ -50,9 +50,22 @@ export default function Home() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleTrace} className="flex flex-col sm:flex-row gap-4">
-                <div className="relative flex-grow"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-5 w-5" /><Input type="text" placeholder="e.g. SK-2026-X981" className="pl-10 text-lg py-6" value={batchId} onChange={(e) => setBatchId(e.target.value)} /></div>
-                <Button type="submit" size="lg" className="py-6 text-lg bg-green-600 hover:bg-green-700">Trace Batch</Button>
-                <Button type="button" variant="outline" size="lg" onClick={() => setIsScannerOpen(true)} className="rounded-xl bg-emerald-600 py-6 text-lg font-bold text-white shadow hover:bg-emerald-700">Scan Produce QR Code</Button>
+                <div className="relative flex-grow">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-5 w-5" />
+                  <Input
+                    type="text"
+                    placeholder="e.g. SK-2026-X981"
+                    className="pl-10 text-lg py-6"
+                    value={batchId}
+                    onChange={(e) => setBatchId(e.target.value)}
+                  />
+                </div>
+                <Button type="submit" size="lg" className="py-6 text-lg bg-green-600 hover:bg-green-700">
+                  Trace Batch
+                </Button>
+                <Button type="button" variant="outline" size="lg" onClick={() => setIsScannerOpen(true)} className="rounded-xl bg-emerald-600 py-6 text-lg font-bold text-white shadow hover:bg-emerald-700">
+                  📷 Scan Product QR Code
+                </Button>
               </form>
             </CardContent>
           </Card>

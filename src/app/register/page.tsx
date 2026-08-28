@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { PublicShell } from '@/components/portal-shell';
 
 type Role = 'farmer' | 'aggregator' | 'distributor' | 'retailer' | 'regulator';
+const roleRoutes: Record<Role, string> = { farmer: '/farmer', aggregator: '/aggregator', distributor: '/distributor', retailer: '/retailer', regulator: '/regulator' };
 export default function RegisterPage() {
   const router = useRouter();
   const [fullName, setFullName] = useState(''); const [role, setRole] = useState<Role>('farmer'); const [location, setLocation] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState('');
@@ -33,7 +34,7 @@ export default function RegisterPage() {
       console.log('Supabase profile insert response:', profileResponse);
       if (profileResponse.error) throw new Error(profileResponse.error.message);
       if (!data.session) { setUiError('Account created. Please check your email to confirm your account before signing in.'); return; }
-      router.push('/dashboard');
+      router.push(roleRoutes[role]);
       router.refresh();
     } catch (caughtError) {
       console.error('Supabase registration exception:', caughtError);

@@ -11,6 +11,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PublicShell } from '@/components/portal-shell';
 
+type Role = 'farmer' | 'aggregator' | 'distributor' | 'retailer' | 'regulator';
+const roleRoutes: Record<Role, string> = { farmer: '/farmer', aggregator: '/aggregator', distributor: '/distributor', retailer: '/retailer', regulator: '/regulator' };
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -28,7 +31,9 @@ export default function LoginPage() {
       const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
       if (error) { setUiError(error.message); return; }
       if (!data.session || !data.user) { setUiError('Sign-in succeeded but no active session was created. Confirm your email, then try again.'); return; }
-      router.replace('/dashboard');
+      const { data: profile, error: profileError } = await supabase.from('profiles').select('role').eq('id', data.user.id).single();
+      if (profileError || !profile || !(profile.role in roleRoutes)) { setUiError('Your account profile could not be loaded. Please contact an administrator.'); return; }
+      router.replace(roleRoutes[profile.role as Role]);
       router.refresh();
     } catch (caughtError) {
       setUiError(caughtError instanceof Error ? caughtError.message : 'Unable to sign in. Please try again.');

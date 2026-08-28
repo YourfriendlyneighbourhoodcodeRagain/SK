@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ClipboardCheck, FlaskConical, QrCode, ScanLine, Search, Send } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ClipboardCheck, FlaskConical, ScanLine, Search, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { getAuthenticatedActor, recordHandoff } from '@/lib/blockchain';
 import { PortalShell } from '@/components/portal-shell';
@@ -9,15 +9,20 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { QRScannerModal } from '@/components/QRScannerModal';
 
 type Workflow = 'receive' | 'lab' | 'sell';
 type LookupMode = 'scan' | 'manual';
 type Batch = { id: string; batch_code: string; crop_name: string; farm_location: string; harvest_date: string; total_weight_kg: number; status: string; is_recalled: boolean };
 type Distributor = { id: string; full_name: string; location: string | null };
 type Sale = { id: string; batch_id: string; assigned_distributor_name: string; quantity_kg: number; notes: string | null; created_at: string; batch: { batch_code: string; crop_name: string } | null };
+type ReceivedBatch = Batch & { lab_tests?: Array<{ test_status: string }> };
+type ReceivedHandoffRow = { batch_id: string; batches: ReceivedBatch | ReceivedBatch[] | null };
 
 export default function AggregatorDashboard() {
-  const [workflow, setWorkflow] = useState<Workflow>('sell');
+  const [workflow, setWorkflow] = useState<Workflow>('receive');
+  const [showHistory, setShowHistory] = useState(false);
   const [receiveMode, setReceiveMode] = useState<LookupMode>('scan');
   const [labMode, setLabMode] = useState<LookupMode>('scan');
   const [sellMode, setSellMode] = useState<LookupMode>('scan');
@@ -137,17 +142,34 @@ export default function AggregatorDashboard() {
     finally { setLoading(null); }
   }
 
-  return <PortalShell title="Aggregator quality hub" description="Receive farmer batches and attach pesticide-residue test records." icon={ClipboardCheck}>
-    <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <WorkflowButton active={workflow === 'receive'} icon={<QrCode />} title="Receive farmer batch" description="Verify a farmer batch and record its arrival." onClick={() => setWorkflow('receive')} />
-      <WorkflowButton active={workflow === 'lab'} icon={<FlaskConical />} title="Attach lab residue test" description="Link a pesticide-residue report to a batch." onClick={() => setWorkflow('lab')} />
-      <WorkflowButton active={workflow === 'sell'} icon={<Send />} title="Sell to distributor" description="Search the distributor directory and sell part or all of a batch." onClick={() => setWorkflow('sell')} />
-    </div>
-    {status && <div role="status" className={`mb-6 p-4 ${status.type === 'success' ? 'portal-status-success' : 'portal-status-error'}`}>{status.text}</div>}
-    {lookupError && <div role="alert" className="portal-status-error mb-6 p-4">{lookupError}</div>}
-    <SalesHistory />
+  return <>
+    <PortalShell title="Aggregator quality hub" description="Receive farmer batches and attach pesticide-residue test records." icon={ClipboardCheck} showWorkspaceLink={false} onHistoryClick={() => setShowHistory(true)}>
+      {status && <div role="status" className={`mb-6 p-4 ${status.type === 'success' ? 'portal-status-success' : 'portal-status-error'}`}>{status.text}</div>}
+      {lookupError && <div role="alert" className="portal-status-error mb-6 p-4">{lookupError}</div>}
+      <div className="rounded-2xl border border-green-100 bg-gradient-to-br from-green-50 via-white to-amber-50 p-3 shadow-sm sm:p-4" aria-label="Aggregator workflows">
+        <div className="mb-3 flex items-center justify-between px-1"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">Work center</p><p className="mt-1 text-sm text-slate-600">Choose what you want to do</p></div><span className="hidden rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 shadow-sm sm:inline">Step by step</span></div>
+        <div className="grid gap-3 sm:grid-cols-3">
+        <WorkflowButton active={workflow === 'receive'} icon={<ClipboardCheck className="h-6 w-6" />} title="Receive batch" description="Record a farmer delivery" onClick={() => setWorkflow('receive')} />
+        <WorkflowButton active={workflow === 'lab'} icon={<FlaskConical className="h-6 w-6" />} title="Attach lab test" description="Record residue results" onClick={() => setWorkflow('lab')} />
+        <WorkflowButton active={workflow === 'sell'} icon={<Send className="h-6 w-6" />} title="Sell to distributor" description="Send a tested batch onward" onClick={() => setWorkflow('sell')} />
+        </div>
+      </div>
     {workflow === 'sell' ? <SellWorkflow mode={sellMode} onModeChange={setSellMode} code={sellCode} onCodeChange={(value) => { setSellCode(value); setSellBatch(null); }} onLookup={() => void lookupBatch(sellCode, 'sell')} loading={loading === 'sellLookup'} batch={sellBatch} distributors={distributors} previousDistributors={previousDistributors} choice={distributorChoice} onChoiceChange={setDistributorChoice} newDistributor={newDistributor} onNewDistributorChange={setNewDistributor} notes={saleNotes} onNotesChange={setSaleNotes} onSubmit={sellBatchToDistributor} submitting={loading === 'sellSubmit'} /> : workflow === 'receive' ? <Card className="portal-surface"><CardHeader><CardTitle>Receive farmer batch</CardTitle><CardDescription>Identify the batch, review its details, then confirm receipt.</CardDescription></CardHeader><CardContent className="space-y-6"><BatchLookup mode={receiveMode} onModeChange={setReceiveMode} code={receiveCode} onCodeChange={(value) => { setReceiveCode(value); setReceiveBatch(null); }} onLookup={() => void lookupBatch(receiveCode, 'receive')} loading={loading === 'receiveLookup'} batch={receiveBatch} />{receiveBatch && <form onSubmit={receiveBatchAtHub} className="space-y-4 border-t border-green-100 pt-6"><div><Label htmlFor="quality-notes">Quality and quantity notes</Label><Input id="quality-notes" className="portal-field mt-2" placeholder="Example: Sorted and received in good condition" value={notes} onChange={(event) => setNotes(event.target.value)} required /></div><Button type="submit" disabled={loading === 'receiveSubmit'} className="portal-action w-full py-5 text-base">{loading === 'receiveSubmit' ? 'Receiving batch…' : 'Confirm receipt'}</Button></form>}</CardContent></Card> : <Card className="portal-surface"><CardHeader><CardTitle>Attach lab residue test</CardTitle><CardDescription>Identify the batch before recording its residue-test result.</CardDescription></CardHeader><CardContent className="space-y-6"><BatchLookup mode={labMode} onModeChange={setLabMode} code={labCode} onCodeChange={(value) => { setLabCode(value); setLabBatch(null); }} onLookup={() => void lookupBatch(labCode, 'lab')} loading={loading === 'labLookup'} batch={labBatch} />{labBatch && <form onSubmit={attachLabTest} className="grid gap-4 border-t border-green-100 pt-6 md:grid-cols-2"><Field label="Lab name" id="lab-name" value={labName} onChange={setLabName} /><Field label="Lab certificate URL or ID" id="lab-report" value={reportUrl} onChange={setReportUrl} required={false} /><Field label="Residue level (ppm)" id="residue" value={residueLevel} onChange={setResidueLevel} type="number" /><Field label="Permissible limit (ppm)" id="limit" value={maxLimit} onChange={setMaxLimit} type="number" /><div className="md:col-span-2"><Label>Test result</Label><div className="mt-2 grid grid-cols-2 gap-3"><Button type="button" variant={passed ? 'default' : 'outline'} className={passed ? 'portal-action py-5' : 'border-green-200 text-green-700 hover:bg-green-50'} onClick={() => setPassed(true)}><CheckCircle2 className="mr-2" />Pass</Button><Button type="button" variant={!passed ? 'destructive' : 'outline'} className={!passed ? 'py-5' : 'border-red-200 text-red-700 hover:bg-red-50'} onClick={() => setPassed(false)}><AlertTriangle className="mr-2" />Fail</Button></div></div><Button type="submit" disabled={loading === 'labSubmit'} className="portal-action w-full py-5 text-base md:col-span-2">{loading === 'labSubmit' ? 'Attaching lab test…' : 'Attach lab test'}</Button></form>}</CardContent></Card>}
-  </PortalShell>;
+  </PortalShell>
+  
+    <Dialog open={showHistory} onOpenChange={setShowHistory}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Aggregator Hub History</DialogTitle>
+          <DialogDescription>Received batches and sales records</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-6">
+          <ReceivedBatches key={showHistory ? 'history-open' : 'history-closed'} />
+          <SalesHistory key={showHistory ? 'sales-open' : 'sales-closed'} />
+        </div>
+      </DialogContent>
+    </Dialog>
+  </>;
 }
 
 function SellWorkflow({ mode, onModeChange, code, onCodeChange, onLookup, loading, batch, distributors, search = '', onSearchChange, selectedDistributor, onSelectDistributor, quantity, onQuantityChange, notes, onNotesChange, onSubmit, submitting, choice, onChoiceChange, newDistributor, onNewDistributorChange, previousDistributors }: { mode: LookupMode; onModeChange: (mode: LookupMode) => void; code: string; onCodeChange: (value: string) => void; onLookup: () => void; loading: boolean; batch: Batch | null; distributors: Distributor[]; search?: string; onSearchChange?: (value: string) => void; selectedDistributor?: Distributor | null; onSelectDistributor?: (distributor: Distributor) => void; quantity?: string; onQuantityChange?: (value: string) => void; notes: string; onNotesChange: (value: string) => void; onSubmit: (event: React.FormEvent) => void; submitting: boolean; choice?: string; onChoiceChange?: (value: string) => void; newDistributor?: string; onNewDistributorChange?: (value: string) => void; previousDistributors?: string[] }) {
@@ -160,24 +182,63 @@ function SellWorkflow({ mode, onModeChange, code, onCodeChange, onLookup, loadin
   return <Card className="portal-surface"><CardHeader><CardTitle>Sell batch to a distributor</CardTitle><CardDescription>Search the directory, select a distributor, and sell any available quantity.</CardDescription></CardHeader><CardContent className="space-y-6"><BatchLookup mode={mode} onModeChange={onModeChange} code={code} onCodeChange={onCodeChange} onLookup={onLookup} loading={loading} batch={batch} /><div className="border-t border-green-100 pt-6"><Label htmlFor="distributor-search">Search distributors</Label><Input id="distributor-search" className="portal-field mt-2" placeholder="Search by name or location" value={activeSearch} onChange={(event) => onSearchChange ? onSearchChange(event.target.value) : setLocalSearch(event.target.value)} /><div className="mt-3 max-h-56 space-y-2 overflow-y-auto">{visibleDistributors.map((distributor) => <button type="button" key={distributor.id} onClick={() => selectDistributor(distributor)} className={`w-full rounded-lg border p-3 text-left ${chosen?.id === distributor.id ? 'border-green-600 bg-green-50 ring-2 ring-green-100' : 'border-slate-200 hover:border-green-400'}`}><span className="block font-semibold text-slate-900">{distributor.full_name}</span><span className="text-sm text-slate-500">{distributor.location || 'Location not provided'}</span></button>)}{visibleDistributors.length === 0 && <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">No distributors match your search.</p>}</div></div>{batch && chosen && <form onSubmit={onSubmit} className="space-y-4 border-t border-green-100 pt-6"><p className="text-sm font-medium text-slate-700">Selling to <span className="text-green-700">{chosen.full_name}</span></p><Field label={`Quantity to sell (kg, maximum ${batch.total_weight_kg})`} id="sale-quantity" value={quantity ?? newDistributor ?? ''} onChange={onQuantityChange ?? onNewDistributorChange ?? (() => undefined)} type="number" /><div><Label htmlFor="sale-notes">Sale and transport notes</Label><Input id="sale-notes" className="portal-field mt-2" placeholder="Example: Refrigerated pickup" value={notes} onChange={(event) => onNotesChange(event.target.value)} /></div><Button type="submit" disabled={submitting} className="portal-action w-full py-5 text-base">{submitting ? 'Recording sale…' : <><Send className="mr-2" />Confirm sale</>}</Button></form>}</CardContent></Card>;
 }
 
-function WorkflowButton({ active, icon, title, description, onClick }: { active: boolean; icon: React.ReactNode; title: string; description: string; onClick: () => void }) { return <button type="button" onClick={onClick} className={`rounded-xl border p-5 text-left transition-colors ${active ? 'border-green-600 bg-green-50 ring-2 ring-green-100' : 'border-green-100 bg-white hover:bg-green-50'}`}><span className="mb-3 inline-flex rounded-lg bg-green-100 p-2 text-green-700">{icon}</span><span className="block font-semibold text-slate-900">{title}</span><span className="mt-1 block text-sm text-slate-600">{description}</span></button>; }
+function WorkflowButton({ active, icon, title, description, onClick }: { active: boolean; icon: React.ReactNode; title: string; description: string; onClick: () => void }) { return <button type="button" aria-pressed={active} onClick={onClick} className={`group relative min-h-32 rounded-xl border-2 p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700 ${active ? 'border-green-600 bg-white ring-2 ring-green-100' : 'border-transparent bg-white/80 hover:border-green-300'}`}><span className={`mb-4 inline-flex rounded-xl p-3 transition-colors ${active ? 'bg-green-700 text-white' : 'bg-green-100 text-green-700 group-hover:bg-green-200'}`}>{icon}</span><span className="block font-bold text-slate-900">{title}</span><span className="mt-1 block text-sm leading-5 text-slate-600">{description}</span>{active && <span className="absolute right-3 top-3 h-2.5 w-2.5 rounded-full bg-amber-500 ring-4 ring-amber-100" />}</button>; }
 
-function BatchLookup({ mode, onModeChange, code, onCodeChange, onLookup, loading, batch }: { mode: LookupMode; onModeChange: (mode: LookupMode) => void; code: string; onCodeChange: (value: string) => void; onLookup: () => void; loading: boolean; batch: Batch | null }) { return <div className="space-y-5"><div className="grid grid-cols-2 rounded-lg bg-slate-100 p-1"><Button type="button" variant={mode === 'scan' ? 'default' : 'ghost'} className={mode === 'scan' ? 'portal-action' : 'text-slate-600'} onClick={() => onModeChange('scan')}><ScanLine className="mr-2" />Scan QR code</Button><Button type="button" variant={mode === 'manual' ? 'default' : 'ghost'} className={mode === 'manual' ? 'portal-action' : 'text-slate-600'} onClick={() => onModeChange('manual')}><Search className="mr-2" />Enter manually</Button></div>{mode === 'scan' && <div className="rounded-lg border border-green-100 bg-green-50 p-4 text-sm text-slate-700"><p className="font-semibold text-green-800">QR scan ready</p><p className="mt-1">Camera scanning is not configured in this app. Scan the label with your device, then enter the displayed batch ID below.</p></div>}<div className="flex flex-col gap-3 sm:flex-row"><div className="flex-1"><Label htmlFor={`batch-${mode}`}>{mode === 'scan' ? 'Scanned batch ID' : 'Batch ID'}</Label><Input id={`batch-${mode}`} className="portal-field mt-2" placeholder="Example: SK-2026-X981" value={code} onChange={(event) => onCodeChange(event.target.value)} /></div><Button type="button" onClick={onLookup} disabled={loading} className="portal-action mt-auto py-5">{loading ? 'Finding…' : 'Find batch'}</Button></div>{batch && <BatchSummary batch={batch} />}</div>; }
+function BatchLookup({ mode, onModeChange, code, onCodeChange, onLookup, loading, batch }: { mode: LookupMode; onModeChange: (mode: LookupMode) => void; code: string; onCodeChange: (value: string) => void; onLookup: () => void; loading: boolean; batch: Batch | null }) {
+  const [scannerOpen, setScannerOpen] = useState(false);
+  return <div className="space-y-5"><div className="grid grid-cols-2 rounded-lg bg-slate-100 p-1"><Button type="button" variant={mode === 'scan' ? 'default' : 'ghost'} className={mode === 'scan' ? 'portal-action' : 'text-slate-600'} onClick={() => onModeChange('scan')}><ScanLine className="mr-2" />Scan QR code</Button><Button type="button" variant={mode === 'manual' ? 'default' : 'ghost'} className={mode === 'manual' ? 'portal-action' : 'text-slate-600'} onClick={() => onModeChange('manual')}><Search className="mr-2" />Enter manually</Button></div>{mode === 'scan' && <div className="rounded-lg border border-green-100 bg-green-50 p-4 text-sm text-slate-700"><p className="font-semibold text-green-800">Scan the batch label with your camera</p><Button type="button" onClick={() => setScannerOpen(true)} className="portal-action mt-3 min-h-11 w-full"><ScanLine className="mr-2" />Open camera scanner</Button></div>}<div className="flex flex-col gap-3 sm:flex-row"><div className="flex-1"><Label htmlFor={`batch-${mode}`}>{mode === 'scan' ? 'Scanned batch ID' : 'Batch ID'}</Label><Input id={`batch-${mode}`} className="portal-field mt-2" placeholder="Example: SK-2026-X981" value={code} onChange={(event) => onCodeChange(event.target.value)} /></div><Button type="button" onClick={onLookup} disabled={loading} className="portal-action mt-auto py-5">{loading ? 'Finding…' : 'Find batch'}</Button></div>{batch && <BatchSummary batch={batch} />}<QRScannerModal open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={(batchCode) => { onCodeChange(batchCode); window.setTimeout(onLookup, 0); }} /></div>;
+}
 function BatchSummary({ batch }: { batch: Batch }) { return <div className="rounded-xl border border-green-200 bg-green-50 p-4"><p className="text-sm font-semibold text-green-800">Batch found · review before continuing</p><div className="mt-3 grid gap-3 text-sm sm:grid-cols-2"><Detail label="Batch ID" value={batch.batch_code} /><Detail label="Crop" value={batch.crop_name} /><Detail label="Farm" value={batch.farm_location} /><Detail label="Harvest date" value={new Date(batch.harvest_date).toLocaleDateString()} /><Detail label="Weight" value={`${batch.total_weight_kg} kg`} /><Detail label="Current status" value={batch.status.replaceAll('_', ' ')} /></div>{batch.is_recalled && <p className="mt-3 rounded-lg bg-red-100 p-2 text-sm font-medium text-red-800">This batch is recalled. Do not process it.</p>}</div>; }
 
+function ReceivedBatches() {
+  const [batches, setBatches] = useState<ReceivedBatch[]>([]);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadBatches(); }, 0);
+    return () => window.clearTimeout(timer);
+    async function loadBatches() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data, error: queryError } = await supabase
+        .from('batch_handoffs')
+        .select('batch_id, batches(id, batch_code, crop_name, farm_location, total_weight_kg, status, is_recalled, lab_tests(test_status))')
+        .eq('handler_id', user.id)
+        .eq('stage', 'aggregation')
+        .order('created_at', { ascending: false });
+      if (queryError) { setError(queryError.message); return; }
+      const uniqueBatches = new Map<string, ReceivedBatch>();
+      ((data ?? []) as ReceivedHandoffRow[]).forEach((handoff) => {
+        const batch = Array.isArray(handoff.batches) ? handoff.batches[0] : handoff.batches;
+        if (batch && !uniqueBatches.has(batch.id)) {
+          uniqueBatches.set(batch.id, batch);
+        }
+      });
+      setBatches(Array.from(uniqueBatches.values()));
+    }
+  }, []);
+  if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Could not load received batches: {error}</div>;
+  if (!batches.length) return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No received batches yet.</div>;
+  return <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4"><div className="mb-4"><h3 className="font-semibold text-slate-900">Received batches ({batches.length})</h3></div><div className="space-y-3">{batches.map((batch) => {
+    const labTest = batch.lab_tests?.[0]?.test_status;
+    return <div key={batch.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 text-sm last:border-0 last:pb-0"><div><p className="font-medium text-slate-900">{batch.batch_code} · {batch.crop_name}</p><p className="text-slate-500">{batch.total_weight_kg} kg from {batch.farm_location}</p></div><div className="flex flex-wrap gap-2"><span className={`rounded-full px-2 py-1 text-xs font-medium ${labTest === 'PASS' ? 'bg-green-100 text-green-800' : labTest === 'FAIL' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>{labTest ? labTest : 'No test'}</span>{batch.is_recalled && <span className="rounded-full bg-red-600 px-2 py-1 text-xs font-medium text-white">Recalled</span>}</div></div>;
+  })}</div></div>;
+}
 function SalesHistory() {
   const [sales, setSales] = useState<Sale[]>([]);
+  const [error, setError] = useState('');
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadSales(); }, 0);
     return () => window.clearTimeout(timer);
     async function loadSales() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data } = await supabase.from('batch_handoffs').select('id, batch_id, assigned_distributor_name, quantity_kg, notes, created_at, batches(batch_code, crop_name)').eq('handler_id', user.id).eq('stage', 'logistics').not('assigned_distributor_name', 'is', null).not('quantity_kg', 'is', null).order('created_at', { ascending: false });
+      const { data, error: queryError } = await supabase.from('batch_handoffs').select('id, batch_id, assigned_distributor_name, quantity_kg, notes, created_at, batches(batch_code, crop_name)').eq('handler_id', user.id).eq('stage', 'logistics').not('assigned_distributor_name', 'is', null).not('quantity_kg', 'is', null).order('created_at', { ascending: false });
+      if (queryError) { setError(queryError.message); return; }
       setSales((data ?? []).map((sale) => ({ ...sale, batch: Array.isArray(sale.batches) ? sale.batches[0] : sale.batches })) as Sale[]);
     }
   }, []);
-  if (!sales.length) return null;
+  if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Could not load sales history: {error}</div>;
+  if (!sales.length) return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No sales recorded yet.</div>;
   return <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4"><div className="mb-3 flex items-center gap-2"><ClipboardCheck className="h-5 w-5 text-green-700" /><h3 className="font-semibold text-slate-900">Sales history</h3></div><div className="space-y-3">{sales.map((sale) => <div key={sale.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3 text-sm last:border-0 last:pb-0"><div><p className="font-medium text-slate-900">{sale.batch?.batch_code ?? 'Batch'} · {sale.batch?.crop_name ?? 'Produce'}</p><p className="text-slate-500">Sold to {sale.assigned_distributor_name}</p></div><div className="text-right"><p className="font-semibold text-green-700">{sale.quantity_kg} kg</p><p className="text-xs text-slate-500">{new Date(sale.created_at).toLocaleString()}</p></div></div>)}</div></div>;
 }
 function Detail({ label, value }: { label: string; value: string }) { return <div><p className="text-slate-500">{label}</p><p className="font-medium capitalize text-slate-900">{value}</p></div>; }
