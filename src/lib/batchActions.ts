@@ -5,7 +5,7 @@ import { anchorHashOnPolygon } from '@/lib/polygon';
 import { supabase } from '@/lib/supabaseClient';
 
 export type BatchFormData = { farmerId: string; cropName: string; totalWeightKg: number; harvestDate: string; farmLocation: string };
-export type BatchRecord = { id: string; farmer_id: string; batch_code: string; crop_name: string; total_weight_kg: number; harvest_date: string; farm_location: string; qr_code_url: string; status: string; pesticide_status: string; data_hash: string | null; polygon_tx_hash: string | null; created_at: string; lab_tests?: { test_status: string }[] };
+export type BatchRecord = { id: string; farmer_id: string; batch_code: string; crop_name: string; total_weight_kg: number; harvest_date: string; farm_location: string; qr_code_url: string; status: string; is_recalled: boolean; pesticide_status: string; data_hash: string | null; polygon_tx_hash: string | null; created_at: string; lab_tests?: { test_status: string }[] };
 export type BatchHandoff = { stage: string; assigned_distributor_name: string | null; quantity_kg: number | null; notes: string | null; created_at: string };
 export type BatchTrace = { batch: BatchRecord; handoffs: BatchHandoff[] };
 

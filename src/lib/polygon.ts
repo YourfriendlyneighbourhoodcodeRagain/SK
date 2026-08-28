@@ -36,13 +36,13 @@ export async function anchorHashOnPolygon(dataHash: string): Promise<string> {
   const provider = new ethers.JsonRpcProvider(rpcUrl, 80002, { staticNetwork: true });
   const wallet = new ethers.Wallet(privateKey, provider);
   const network = await provider.getNetwork();
-  if (network.chainId !== 80002n) {
+  if (network.chainId !== BigInt(80002)) {
     throw new Error(`Unexpected Polygon network. Expected chain 80002, got ${network.chainId}.`);
   }
 
   const tx = await wallet.sendTransaction({
     to: wallet.address,
-    value: 0n,
+    value: BigInt(0),
     data: hash,
   });
   await tx.wait();
