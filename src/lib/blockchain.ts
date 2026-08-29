@@ -14,6 +14,76 @@ export type RecordHandoffInput = {
   quantityKg?: number;
 };
 
+<<<<<<< HEAD
+=======
+export type HandoffBlockchainStatus = 'VERIFIED' | 'NOT_ANCHORED' | 'TAMPERED';
+
+export type HandoffAnchor = {
+  id?: string;
+  handoff_id: string;
+  tx_hash: string;
+  committed_hash: string;
+  network?: string | null;
+  created_at?: string;
+};
+
+export type HandoffRecord = {
+  id: string;
+  batch_id?: string;
+  handler_id?: string | null;
+  stage: string;
+  location?: string | null;
+  notes?: string | null;
+  assigned_distributor_name?: string | null;
+  assigned_retailer_name?: string | null;
+  quantity_kg?: number | null;
+  created_at: string;
+  prev_hash?: string | null;
+  current_hash?: string | null;
+  ledger_version?: number;
+  actor_profile?: { full_name: string; location: string | null; role: string } | null;
+};
+
+export type HandoffVerificationResult = {
+  status: HandoffBlockchainStatus;
+  headline: string;
+  message: string;
+  isAnchored: boolean;
+  isTampered: boolean;
+  isVerified: boolean;
+  recordedHash: string | null;
+  committedHash: string | null;
+  txHash: string | null;
+  network: string;
+  polygonScanUrl: string | null;
+};
+
+export type VerifiedHandoff = HandoffRecord & {
+  anchor?: HandoffAnchor | null;
+  verification: HandoffVerificationResult;
+};
+
+export type BatchBlockchainStatus = 'VERIFIED' | 'NOT_ANCHORED' | 'NOT_FULLY_ANCHORED' | 'TAMPERED';
+
+export type BatchVerificationSummary = {
+  status: BatchBlockchainStatus;
+  badgeLabel: string;
+  headline: string;
+  description: string;
+  consumerDescription: string;
+  tamperedStages: string[];
+  unanchoredStages: string[];
+  verifiedStages: string[];
+  totalHandoffs: number;
+  verifiedCount: number;
+  unanchoredCount: number;
+  tamperedCount: number;
+  handoffs: VerifiedHandoff[];
+  hasTampered: boolean;
+  isFullyVerified: boolean;
+};
+
+>>>>>>> 9affdaf (flowchart)
 type StoredHandoff = {
   id: string; batch_id: string; handler_id: string; stage: HandoffStage; location: string | null; notes: string | null;
   created_at: string; prev_hash: string | null; current_hash: string | null; ledger_version: number;
