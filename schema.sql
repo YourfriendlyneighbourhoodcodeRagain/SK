@@ -68,3 +68,20 @@ ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS pesticide_status TEXT NOT NU
 ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS data_hash TEXT;
 ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS polygon_tx_hash TEXT;
 ALTER TABLE public.batches ALTER COLUMN status SET DEFAULT 'SAFE';
+
+-- Blockchain Anchors Table for Polygon Amoy
+CREATE TABLE IF NOT EXISTS public.handoff_blockchain_anchors (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  handoff_id UUID REFERENCES public.batch_handoffs(id) ON DELETE CASCADE,
+  tx_hash TEXT NOT NULL,
+  committed_hash TEXT NOT NULL,
+  network TEXT NOT NULL DEFAULT 'polygon-amoy',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.handoff_blockchain_anchors ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Read blockchain anchors" ON public.handoff_blockchain_anchors;
+CREATE POLICY "Read blockchain anchors" ON public.handoff_blockchain_anchors FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Insert blockchain anchors" ON public.handoff_blockchain_anchors;
+CREATE POLICY "Insert blockchain anchors" ON public.handoff_blockchain_anchors FOR INSERT WITH CHECK (true);
+

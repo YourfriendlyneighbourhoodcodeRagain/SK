@@ -1,6 +1,7 @@
 'use client';
 
-import { FormEvent, useEffect, useId, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
+
 import { useRouter } from 'next/navigation';
 import { Html5Qrcode } from 'html5-qrcode';
 
@@ -12,7 +13,7 @@ export function QRScannerModal({ open, onClose, onScan }: { open: boolean; onClo
   const [manualCode, setManualCode] = useState('');
   const [error, setError] = useState('');
 
-  function goToTrace(value: string) {
+  const goToTrace = useCallback((value: string) => {
     const cleaned = value.trim();
     const match = cleaned.match(/\/trace\/([^/?#]+)/i);
     const batchCode = decodeURIComponent(match?.[1] ?? cleaned);
@@ -25,12 +26,11 @@ export function QRScannerModal({ open, onClose, onScan }: { open: boolean; onClo
     onClose();
     if (onScan) onScan(batchCode);
     else router.push(`/trace/${encodeURIComponent(batchCode)}`);
-  }
+  }, [onClose, onScan, router]);
 
   useEffect(() => {
     if (!open) {
       startAttempted.current = false;
-      setError('');
       return;
     }
 
@@ -56,6 +56,14 @@ export function QRScannerModal({ open, onClose, onScan }: { open: boolean; onClo
     };
 
     const start = async () => {
+      const isSecureCameraContext = typeof window !== 'undefined' && (window.isSecureContext || ['localhost', '127.0.0.1'].includes(window.location.hostname));
+      if (!isSecureCameraContext) {
+        if (active) {
+          setError('Camera access is unavailable on network URLs. Open this app on localhost or use HTTPS to scan the QR code.');
+        }
+        return;
+      }
+
       try {
         if (scanner.current) {
           await stopScanner(scanner.current);
@@ -88,7 +96,8 @@ export function QRScannerModal({ open, onClose, onScan }: { open: boolean; onClo
       scanner.current = null;
       void stopScanner(instance);
     };
-  }, [open, scannerId]);
+  }, [open, scannerId, goToTrace]);
+
 
   if (!open) return null;
 

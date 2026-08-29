@@ -6,8 +6,8 @@ import { AlertTriangle, QrCode, Sprout } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { CreateBatchForm } from '@/components/CreateBatchForm';
 import { PortalShell } from '@/components/portal-shell';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 type Batch = {

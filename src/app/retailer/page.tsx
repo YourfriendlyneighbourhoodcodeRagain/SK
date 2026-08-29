@@ -48,18 +48,19 @@ export default function RetailerDashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const { data: deliveries } = await supabase.from('retailer_deliveries').select('id, batch_id, distributor_id, quantity_kg, status, issue, dispatched_at, received_at').eq('retailer_id', user.id).order('dispatched_at', { ascending: false });
-      const batchIds = [...new Set((deliveries ?? []).map((row: any) => row.batch_id))];
-      const distributorIds = [...new Set((deliveries ?? []).map((row: any) => row.distributor_id))];
+      const deliveryRows = (deliveries ?? []) as Array<{ id: string; batch_id: string; distributor_id: string; quantity_kg: number; status: string; issue: string | null; dispatched_at: string | null; received_at: string | null }>;
+      const batchIds = [...new Set(deliveryRows.map((row) => row.batch_id))];
+      const distributorIds = [...new Set(deliveryRows.map((row) => row.distributor_id))];
       const [{ data: batches }, { data: distributors }, { data: stock }, { data: alerts }] = await Promise.all([
-        batchIds.length ? supabase.from('batches').select('id, batch_code, crop_name').in('id', batchIds) : Promise.resolve({ data: [] as any[] }),
-        distributorIds.length ? supabase.from('profiles').select('id, full_name').in('id', distributorIds) : Promise.resolve({ data: [] as any[] }),
+        batchIds.length ? supabase.from('batches').select('id, batch_code, crop_name').in('id', batchIds) : Promise.resolve({ data: [] as Array<{ id: string; batch_code: string; crop_name: string }> }),
+        distributorIds.length ? supabase.from('profiles').select('id, full_name').in('id', distributorIds) : Promise.resolve({ data: [] as Array<{ id: string; full_name: string }> }),
         supabase.from('retailer_stock').select('batch_id, product, quantity_kg, status').eq('retailer_id', user.id).order('updated_at', { ascending: false }),
         supabase.from('recall_alerts').select('id, batch_id, status, message').eq('recipient_id', user.id).order('created_at', { ascending: false }),
       ]);
       if (!active) return;
-      const batchMap = new Map((batches ?? []).map((row: any) => [row.id, row]));
-      const distributorMap = new Map((distributors ?? []).map((row: any) => [row.id, row]));
-      const mappedDeliveries: RetailerDelivery[] = (deliveries ?? []).map((row: any) => ({
+      const batchMap = new Map(((batches ?? []) as Array<{ id: string; batch_code: string; crop_name: string }>).map((row) => [row.id, row]));
+      const distributorMap = new Map(((distributors ?? []) as Array<{ id: string; full_name: string }>).map((row) => [row.id, row]));
+      const mappedDeliveries: RetailerDelivery[] = deliveryRows.map((row) => ({
         id: `delivery-${row.id}`,
         dbBatchId: row.batch_id,
         product: batchMap.get(row.batch_id)?.crop_name ?? 'Unknown product',
@@ -71,8 +72,9 @@ export default function RetailerDashboard() {
         receivedAt: row.received_at ? displayTime(new Date(row.received_at)) : undefined,
         issue: row.issue ?? undefined,
       }));
-      const mappedStock: StockItem[] = (stock ?? []).map((row: any) => ({ product: row.product, emoji: '📦', quantity: Number(row.quantity_kg), batchId: batchMap.get(row.batch_id)?.batch_code ?? row.batch_id, status: row.status }));
-      const mappedAlerts: SafetyAlertRecord[] = (alerts ?? []).map((row: any) => ({ id: row.id, batchId: batchMap.get(row.batch_id)?.batch_code ?? row.batch_id, product: batchMap.get(row.batch_id)?.crop_name ?? 'Affected product', status: row.status, message: row.message }));
+      const mappedStock: StockItem[] = ((stock ?? []) as Array<{ product: string; quantity_kg: number; batch_id: string; status: StockStatus }>).map((row) => ({ product: row.product, emoji: '📦', quantity: Number(row.quantity_kg), batchId: batchMap.get(row.batch_id)?.batch_code ?? row.batch_id, status: row.status }));
+      const mappedAlerts: SafetyAlertRecord[] = ((alerts ?? []) as Array<{ id: string; batch_id: string; status: string; message: string }>).map((row) => ({ id: row.id, batchId: batchMap.get(row.batch_id)?.batch_code ?? row.batch_id, product: batchMap.get(row.batch_id)?.crop_name ?? 'Affected product', status: row.status, message: row.message }));
+
       setData((current) => ({ ...current, deliveries: mappedDeliveries, stock: mappedStock }));
       setSafetyAlerts(mappedAlerts);
     }
