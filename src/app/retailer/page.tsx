@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowUpRight, CheckCircle2, Package, Plus, QrCode, ReceiptText, ShoppingCart, Store, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { QRCodeModal } from '@/components/QRCodeModal';
 import { PortalShell } from '@/components/portal-shell';
 import { supabase } from '@/lib/supabaseClient';
+import { recordHandoff } from '@/lib/blockchain';
 const storageKey = 'surakshakhadya-retailer-simple-v2';
 type RetailerDelivery = { id: string; dbBatchId: string; product: string; emoji: string; quantity: number; amount: number; distributor: string; retailer?: string; batchId: string; date: string; status: 'WAITING' | 'RECEIVED' | 'ISSUE REPORTED' | 'BLOCKED'; receivedAt?: string; issue?: string };
 type StockStatus = 'AVAILABLE' | 'LOW STOCK' | 'OUT OF STOCK' | 'BLOCKED';
@@ -38,6 +39,8 @@ export default function RetailerDashboard() {
   const [addOrderOpen, setAddOrderOpen] = useState(false);
   const [qrBatchId, setQrBatchId] = useState<string | null>(null);
   const [safetyAlerts, setSafetyAlerts] = useState<SafetyAlertRecord[]>([]);
+  const confirmingReceiptRef = useRef(false);
+  const [confirmingReceipt, setConfirmingReceipt] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -84,19 +87,100 @@ export default function RetailerDashboard() {
   const closeFlow = () => { setFlow('home'); setActiveDeliveryId(null); setProblem(''); };
 
   const confirmReceipt = async () => {
-    if (!active || active.status !== 'WAITING') return;
-    const rawId = active.id.replace('delivery-', '');
-    const now = new Date();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { error } = await supabase.from('retailer_deliveries').update({ status: 'RECEIVED', received_at: now.toISOString() }).eq('id', rawId).eq('retailer_id', user.id);
-    if (error) return;
-    const existing = data.stock.find((stock) => stock.batchId === active.batchId);
-    const nextQuantity = (existing?.quantity ?? 0) + active.quantity;
-    const { error: stockError } = await supabase.from('retailer_stock').upsert({ retailer_id: user.id, batch_id: active.dbBatchId, product: active.product, quantity_kg: nextQuantity, status: 'AVAILABLE', updated_at: now.toISOString() }, { onConflict: 'retailer_id,batch_id' });
-    if (stockError) return;
-    setData((current) => ({ ...current, deliveries: current.deliveries.map((delivery) => delivery.id === active.id ? { ...delivery, status: 'RECEIVED', receivedAt: displayTime(now) } : delivery), stock: existing ? current.stock.map((item) => item.batchId === active.batchId ? { ...item, quantity: nextQuantity, status: 'AVAILABLE' as const } : item) : [...current.stock, { product: active.product, emoji: active.emoji, quantity: active.quantity, batchId: active.batchId, status: 'AVAILABLE' as const }] }));
-    setFlow('done');
+    if (!active || active.status !== 'WAITING' || confirmingReceiptRef.current) return;
+
+    confirmingReceiptRef.current = true;
+    setConfirmingReceipt(true);
+
+    try {
+      const rawId = active.id.replace('delivery-', '');
+      const now = new Date();
+
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) return;
+
+      // Record the retailer receipt in the append-only handoff ledger.
+      // recordHandoff derives the authenticated actor, timestamp, previous hash,
+      // current hash, and anchors the handoff hash on Polygon Amoy.
+      try {
+        await recordHandoff({
+          batchId: active.dbBatchId,
+          stage: 'retail',
+          location: active.retailer || 'Retail store',
+          notes: 'Retailer confirmed receipt of the shipment.',
+          assignedRetailerName: active.retailer,
+          quantityKg: active.quantity,
+        });
+      } catch (error) {
+        console.error('Retailer handoff recording failed:', error);
+        setProblem(error instanceof Error ? error.message : 'Could not record the retailer handoff.');
+        return;
+      }
+
+      const { error: deliveryError } = await supabase
+        .from('retailer_deliveries')
+        .update({ status: 'RECEIVED', received_at: now.toISOString() })
+        .eq('id', rawId)
+        .eq('retailer_id', user.id)
+        .eq('status', 'WAITING');
+
+      if (deliveryError) {
+        setProblem(deliveryError.message);
+        return;
+      }
+
+      const existing = data.stock.find((stock) => stock.batchId === active.batchId);
+      const nextQuantity = (existing?.quantity ?? 0) + active.quantity;
+
+      const { error: stockError } = await supabase
+        .from('retailer_stock')
+        .upsert(
+          {
+            retailer_id: user.id,
+            batch_id: active.dbBatchId,
+            product: active.product,
+            quantity_kg: nextQuantity,
+            status: 'AVAILABLE',
+            updated_at: now.toISOString(),
+          },
+          { onConflict: 'retailer_id,batch_id' }
+        );
+
+      if (stockError) {
+        setProblem(stockError.message);
+        return;
+      }
+
+      setData((current) => ({
+        ...current,
+        deliveries: current.deliveries.map((delivery) =>
+          delivery.id === active.id
+            ? { ...delivery, status: 'RECEIVED', receivedAt: displayTime(now) }
+            : delivery
+        ),
+        stock: existing
+          ? current.stock.map((item) =>
+              item.batchId === active.batchId
+                ? { ...item, quantity: nextQuantity, status: 'AVAILABLE' as const }
+                : item
+            )
+          : [
+              ...current.stock,
+              {
+                product: active.product,
+                emoji: active.emoji,
+                quantity: active.quantity,
+                batchId: active.batchId,
+                status: 'AVAILABLE' as const,
+              },
+            ],
+      }));
+
+      setFlow('done');
+    } finally {
+      confirmingReceiptRef.current = false;
+      setConfirmingReceipt(false);
+    }
   };
 
   const reportProblem = async () => {
@@ -129,7 +213,7 @@ export default function RetailerDashboard() {
         <div className="grid gap-4 md:grid-cols-3"><NavigationCard icon={ShoppingCart} title="MY PURCHASES" description="View goods received from distributors" accent="green" onClick={() => setView('purchases')} /><NavigationCard icon={Package} title="MY STOCK" description="View products currently in your shop" accent="green" onClick={() => setView('stock')} /><NavigationCard icon={Package} title="MY SALES" description="View customer orders and sales" accent="amber" onClick={() => setView('orders')} /></div>
       </section>
     </div>
-    <DeliveryDialog open={flow !== 'home'} flow={flow} delivery={active ?? null} problem={problem} onProblem={setProblem} onConfirm={confirmReceipt} onReport={reportProblem} onClose={closeFlow} />
+    <DeliveryDialog open={flow !== 'home'} flow={flow} delivery={active ?? null} problem={problem} onProblem={setProblem} onConfirm={confirmReceipt} confirming={confirmingReceipt} onReport={reportProblem} onClose={closeFlow} />
     <PurchasesDialog open={view === 'purchases'} purchases={purchases} onSelect={setPurchase} onClose={() => setView(null)} />
     <StockDialog open={view === 'stock'} stock={data.stock} onClose={() => setView(null)} />
     <OrdersDialog open={view === 'orders'} orders={data.orders ?? []} onAdd={() => setAddOrderOpen(true)} onSelect={setOrder} onClose={() => setView(null)} />
@@ -144,7 +228,7 @@ function NewDelivery({ delivery, onConfirm, onProblem }: { delivery: RetailerDel
 function NoDelivery() { return <Card className="portal-surface shadow-md"><CardContent className="flex items-center gap-3 py-5"><div className="rounded-xl bg-green-100 p-3 text-green-700"><CheckCircle2 className="h-6 w-6" /></div><div><p className="font-bold text-slate-900">No new deliveries</p><p className="text-sm text-slate-600">You are all caught up.</p></div></CardContent></Card>; }
 function NavigationCard({ icon: Icon, title, description, accent, onClick }: { icon: typeof Package; title: string; description: string; accent: 'green' | 'amber'; onClick: () => void }) { const colours = accent === 'amber' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'; return <button onClick={onClick} className="group rounded-xl text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700"><Card className="portal-surface h-full shadow-md transition-all group-hover:-translate-y-0.5 group-hover:shadow-xl"><CardContent className="flex min-h-42 flex-col justify-between p-6"><div className="flex items-start justify-between"><div className={`w-fit rounded-xl p-3 ${colours}`}><Icon className="h-7 w-7" /></div><ArrowUpRight className="h-5 w-5 text-slate-300 transition-colors group-hover:text-slate-500" /></div><div><p className="text-lg font-bold text-slate-900">{title}</p><p className="mt-1 text-sm text-slate-600">{description}</p></div></CardContent></Card></button>; }
 function SafetyAlert({ alert, onAcknowledge }: { alert: SafetyAlertRecord; onAcknowledge: (id: string) => void }) { return <Card className="border border-red-200 bg-red-50 shadow-md"><CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><div className="rounded-xl bg-red-100 p-3 text-red-700"><AlertTriangle className="h-6 w-6" /></div><div><p className="text-xs font-bold tracking-[0.16em] text-red-800">FOOD SAFETY ALERT · {alert.status}</p><p className="mt-1 text-lg font-bold text-slate-900">{alert.product} · Batch {alert.batchId}</p><p className="mt-1 text-sm text-red-700">{alert.message}</p></div></div><div className="flex shrink-0 gap-2"><Button nativeButton={false} render={<Link href={`/trace/${encodeURIComponent(alert.batchId)}`} />} variant="outline" className="border-red-300 bg-white text-red-700 hover:bg-red-100">VIEW TRACEABILITY</Button>{alert.status === 'UNREAD' && <Button onClick={() => onAcknowledge(alert.id)} className="bg-red-700 text-white hover:bg-red-800">ACKNOWLEDGE & BLOCK</Button>}</div></CardContent></Card>; }
-function DeliveryDialog({ open, flow, delivery, problem, onProblem, onConfirm, onReport, onClose }: { open: boolean; flow: 'home' | 'confirm' | 'problem' | 'done'; delivery: RetailerDelivery | null; problem: string; onProblem: (value: string) => void; onConfirm: () => void; onReport: () => void; onClose: () => void }) { if (!delivery) return null; const isProblem = flow === 'problem'; const done = flow === 'done'; return <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}><DialogContent className="max-w-md p-6"><DialogHeader><DialogTitle className="text-xl">{done ? (problem ? '✓ Problem reported' : '✓ Delivery received') : isProblem ? 'What is wrong?' : 'Confirm delivery?'}</DialogTitle><DialogDescription>{done ? (problem ? 'Your distributor has been notified.' : 'Your stock has been updated.') : isProblem ? 'Choose one option.' : 'Please check the delivery once.'}</DialogDescription></DialogHeader>{done ? <Button size="lg" className="portal-action h-11 w-full text-base" onClick={onClose}>OK</Button> : isProblem ? <div className="space-y-3">{['Quantity is wrong', 'Product is damaged', 'Wrong product', 'Other'].map((option) => <button key={option} onClick={() => onProblem(option)} className={`w-full rounded-xl border p-4 text-left text-base font-semibold ${problem === option ? 'border-amber-400 bg-amber-50 text-amber-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>{option}</button>)}<Button size="lg" variant="destructive" disabled={!problem} className="mt-2 h-11 w-full text-base" onClick={onReport}>SEND REPORT</Button></div> : <div className="space-y-5"><div className="rounded-xl bg-green-50 p-4"><p className="text-xl font-bold text-slate-900">{delivery.emoji} {delivery.product} — {delivery.quantity} kg</p><p className="mt-2 text-sm text-slate-700">Distributor: <span className="font-semibold text-slate-900">{delivery.distributor}</span></p><p className="mt-1 font-mono text-xs text-slate-600">Batch {delivery.batchId}</p></div><div className="flex gap-2"><Button size="lg" variant="outline" className="h-11 flex-1" onClick={onClose}>CANCEL</Button><Button size="lg" className="portal-action h-11 flex-1 text-base" onClick={onConfirm}>CONFIRM RECEIPT</Button></div></div>}</DialogContent></Dialog>; }
+function DeliveryDialog({ open, flow, delivery, problem, onProblem, onConfirm, confirming, onReport, onClose }: { open: boolean; flow: 'home' | 'confirm' | 'problem' | 'done'; delivery: RetailerDelivery | null; problem: string; onProblem: (value: string) => void; onConfirm: () => void; confirming: boolean; onReport: () => void; onClose: () => void }) { if (!delivery) return null; const isProblem = flow === 'problem'; const done = flow === 'done'; return <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}><DialogContent className="max-w-md p-6"><DialogHeader><DialogTitle className="text-xl">{done ? (problem ? '✓ Problem reported' : '✓ Delivery received') : isProblem ? 'What is wrong?' : 'Confirm delivery?'}</DialogTitle><DialogDescription>{done ? (problem ? 'Your distributor has been notified.' : 'Your stock has been updated.') : isProblem ? 'Choose one option.' : 'Please check the delivery once.'}</DialogDescription></DialogHeader>{done ? <Button size="lg" className="portal-action h-11 w-full text-base" onClick={onClose}>OK</Button> : isProblem ? <div className="space-y-3">{['Quantity is wrong', 'Product is damaged', 'Wrong product', 'Other'].map((option) => <button key={option} onClick={() => onProblem(option)} className={`w-full rounded-xl border p-4 text-left text-base font-semibold ${problem === option ? 'border-amber-400 bg-amber-50 text-amber-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>{option}</button>)}<Button size="lg" variant="destructive" disabled={!problem} className="mt-2 h-11 w-full text-base" onClick={onReport}>SEND REPORT</Button></div> : <div className="space-y-5"><div className="rounded-xl bg-green-50 p-4"><p className="text-xl font-bold text-slate-900">{delivery.emoji} {delivery.product} — {delivery.quantity} kg</p><p className="mt-2 text-sm text-slate-700">Distributor: <span className="font-semibold text-slate-900">{delivery.distributor}</span></p><p className="mt-1 font-mono text-xs text-slate-600">Batch {delivery.batchId}</p></div><div className="flex gap-2"><Button size="lg" variant="outline" className="h-11 flex-1" onClick={onClose}>CANCEL</Button><Button size="lg" className="portal-action h-11 flex-1 text-base" onClick={onConfirm} disabled={confirming}>{confirming ? 'RECORDING…' : 'CONFIRM RECEIPT'}</Button></div></div>}</DialogContent></Dialog>; }
 
 function PurchasesDialog({ open, purchases, onSelect, onClose }: { open: boolean; purchases: RetailerDelivery[]; onSelect: (purchase: RetailerDelivery) => void; onClose: () => void }) { return <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}><DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto p-6 sm:p-7"><DialogHeader><DialogTitle className="text-2xl">My Purchases</DialogTitle><DialogDescription className="text-base">Goods received from distributors.</DialogDescription></DialogHeader><div className="mt-2 space-y-3">{purchases.map((purchase) => <PurchaseRecord key={purchase.id} purchase={purchase} onSelect={() => onSelect(purchase)} />)}</div>{!purchases.length && <p className="py-8 text-center text-slate-500">No received purchases yet.</p>}</DialogContent></Dialog>; }
 function OrdersDialog({ open, orders, onAdd, onSelect, onClose }: { open: boolean; orders: Sale[]; onAdd: () => void; onSelect: (order: Sale) => void; onClose: () => void }) { return <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}><DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto p-6 sm:p-7"><DialogHeader><div className="flex items-start justify-between gap-4 pr-7"><div><DialogTitle className="text-2xl">My Sales</DialogTitle><DialogDescription className="text-base">Products sold from your shop.</DialogDescription></div><Button onClick={onAdd} className="portal-action shrink-0"><Plus />ADD SALE</Button></div></DialogHeader><div className="mt-2 space-y-3">{orders.map((order) => <OrderRecord key={order.id} order={order} onSelect={() => onSelect(order)} />)}</div></DialogContent></Dialog>; }
